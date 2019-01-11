@@ -252,7 +252,7 @@ while(True):
     r = results[0]
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'], colors=colors)
     print("Rendering %f"%(time.time() - finish_time))
-    skimage.io.imsave(os.path.join(ROOT_DIR, f'masked_frame_{n_frames}.jpg'), masked_frame)
+    #skimage.io.imsave(os.path.join(ROOT_DIR, f'masked_frame_{n_frames}.jpg'), masked_frame)
 
     # Write the frame into the file 'output.avi'
     out.write(masked_frame)
