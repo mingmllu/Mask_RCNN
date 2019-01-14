@@ -124,7 +124,7 @@ import cv2
 
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None,
-                      show_mask=True, show_bbox=True,
+                      show_mask=True, show_bbox=True, show_score=True,
                       colors=None, captions=None):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
@@ -133,6 +133,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     class_names: list of class names of the dataset
     scores: (optional) confidence scores for each box
     show_mask, show_bbox: To show masks and bounding boxes or not
+    show_score: To show scores or not
     colors: (optional) An array or colors to use with each object
     captions: (optional) A list of strings to use as captions for each object
     """
@@ -151,6 +152,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         class_id = class_ids[i]
         if class_id != class_names.index('person'):
             continue
+        #color = colors[i]
         color = colors[class_id%len(colors)]
         # Mask
         mask = masks[:, :, i]
@@ -168,10 +170,12 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         if not np.any(boxes[i]):
             # Skip this instance. Has no bbox. Likely lost in image cropping.
             continue
+        y1, x1, y2, x2 = boxes[i]
         if show_bbox:
-            y1, x1, y2, x2 = boxes[i]
             cv2.rectangle(annotated_masked_image, (x1, y1), (x2, y2), green, 1)
         # Label
+        if not show_score:
+            continue
         if not captions:
             class_id = class_ids[i]
             score = scores[i] if scores is not None else None
@@ -209,7 +213,7 @@ out = cv2.VideoWriter('video_segmentation_mjpg4.avi',cv2.VideoWriter_fourcc('M',
 # A counter for frames that have been written to the output file so far
 n_frames = 0
 # The maximum number of frames to be written
-max_number_framed_to_be_saved = 200
+max_number_framed_to_be_saved = 250
 
 colors = visualize.random_colors(10) # assume that there are 10 instances
 
@@ -224,7 +228,8 @@ while(True):
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'], 
-                   colors=colors, show_mask=True, show_bbox=True)
+                   colors=colors,
+                   show_mask=True, show_bbox=True, show_score=True)
     print("Rendering %f"%(time.time() - finish_time))
     #skimage.io.imsave(os.path.join(ROOT_DIR, f'masked_frame_{n_frames}.jpg'), masked_frame)
 
