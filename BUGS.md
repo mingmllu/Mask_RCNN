@@ -1,4 +1,4 @@
-Occasionally, ran into the error:
+Occasionally, I ran into the error:
 ```
 2019-01-22 23:11:00.177003: F tensorflow/core/common_runtime/bfc_allocator.cc:458] Check failed: c->in_use() && (c->bin_num == kInvalidBinNum) 
 Aborted (core dumped)
