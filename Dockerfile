@@ -36,4 +36,4 @@ RUN pip install --upgrade tensorflow-gpu
 
 WORKDIR /mask_rcnn/samples
 
-CMD python [python segmt-live-video-save-masked-frames.py]
+CMD ["python", "segmt-live-video-save-masked-frames.py"]
