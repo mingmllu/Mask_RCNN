@@ -48,6 +48,8 @@ if not os.path.exists(COCO_MODEL_PATH):
 # Directory of images to run detection on
 IMAGE_DIR = os.path.join(ROOT_DIR, "images")
 
+# Directory of videos to be saved as detection results
+VIDEO_OUTPUT_DIR = os.path.join(ROOT_DIR, "videos")
 
 # ## Configurations
 # 
@@ -232,7 +234,8 @@ frame_width = int(cap.get(3))
 frame_height = int(cap.get(4))
 
 # Define the codec and create VideoWriter object.The output is stored in 'outpy.avi' file.
-out = cv2.VideoWriter('video_segmentation_mjpg4.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
+outputfilename = os.path.join(VIDEO_OUTPUT_DIR, 'video_segmentation_mjpg4.avi')
+out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
 # A counter for frames that have been written to the output file so far
 n_frames = 0
 # The maximum number of frames to be written
@@ -252,7 +255,7 @@ while(True):
     r = results[0]
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'], colors=colors)
     print("Rendering %f"%(time.time() - finish_time))
-    #skimage.io.imsave(os.path.join(ROOT_DIR, f'masked_frame_{n_frames}.jpg'), masked_frame)
+    #skimage.io.imsave(os.path.join(VIDEO_OUTPUT_DIR, 'masked_frame_%05d.jpg'%(n_frames)), masked_frame)
 
     # Write the frame into the file 'output.avi'
     out.write(masked_frame)
