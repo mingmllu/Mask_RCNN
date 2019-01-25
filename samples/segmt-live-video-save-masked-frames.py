@@ -254,30 +254,26 @@ colors = visualize.random_colors(10) # assume that there are 10 instances
 
 while(True):
   ret, frame = cap.read()
+  if ret == False: 
+    break
 
-  if ret == True: 
-
-    start_time = time.time()
-    results = model.detect([frame], verbose=0)
-    finish_time = time.time()
-    print("Elapsed time per frame = %f"%(finish_time - start_time))
-    r = results[0]
-    masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'], colors=colors)
-    print("Rendering %f"%(time.time() - finish_time))
+  start_time = time.time()
+  results = model.detect([frame], verbose=0)
+  finish_time = time.time()
+  print("Elapsed time per frame = %f"%(finish_time - start_time))
+  r = results[0]
+  masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores'], colors=colors)
+  print("Rendering %f"%(time.time() - finish_time))
  
-    # Write the frame into the file 'output.avi'
-    out.write(masked_frame)
-    n_frames += 1
+  # Write the frame into the file 'output.avi'
+  out.write(masked_frame)
+  n_frames += 1
 
-    skimage.io.imsave(os.path.join(VIDEO_OUTPUT_DIR, 'masked_frame_%05d.jpg'%(n_frames)), masked_frame)
+  skimage.io.imsave(os.path.join(VIDEO_OUTPUT_DIR, 'masked_frame_%05d.jpg'%(n_frames)), masked_frame)
 
-    print("Frame %d out of %d saved " % (n_frames, max_number_framed_to_be_saved))
-    if n_frames == max_number_framed_to_be_saved:
-      break
-
-  # Break the loop
-  else:
-    break 
+  print("Frame %d out of %d saved " % (n_frames, max_number_framed_to_be_saved))
+  if n_frames == max_number_framed_to_be_saved:
+    break
 
 # When everything done, release the video capture and video write objects
 cap.release()
