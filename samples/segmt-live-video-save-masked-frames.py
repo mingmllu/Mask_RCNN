@@ -219,14 +219,23 @@ import numpy as np
 import time
 
 # Create a VideoCapture object
-#cap = cv2.VideoCapture('http://108.53.114.166/mjpg/video.mjpg')
-#cap = cv2.VideoCapture('http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg') # Kiosk
-cap = cv2.VideoCapture('http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg') # Caffe
+#url_camera = 'http://108.53.114.166/mjpg/video.mjpg' # Newark overpass
+#url_camera = 'http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg' # Kiosk
+url_camera = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Caffe
 
-# Check if camera opened successfully
-if (cap.isOpened() == False): 
-  print("Unable to read camera feed")
-  exit()
+# allow multiple attempts to open video source
+max_num_attempts = 10
+count_attempts = 0
+while True:
+  cap = cv2.VideoCapture(url_camera)
+  # Check if camera opened successfully
+  if (cap.isOpened() == False): 
+    count_attempts += 1
+    print("Unable to read camera feed: %d out of %d"%(count_attempts, max_num_attempts))
+    if count_attempts == max_num_attempts:
+      exit()
+  else:
+    break
 
 # Default resolutions of the frame are obtained.The default resolutions are system dependent.
 # We convert the resolutions from float to integer.

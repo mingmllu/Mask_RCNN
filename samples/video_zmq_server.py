@@ -35,7 +35,8 @@ def main(service_socket, image_file_name):
 
   while fvs.more():
     frame = fvs.read()
-    
+    if frame is None:
+      break
     cv2.namedWindow('Video', cv2.WINDOW_NORMAL)
     cv2.imshow('Video', frame)
     cv2.resizeWindow('Video', 800, 600)
