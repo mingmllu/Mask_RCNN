@@ -63,6 +63,10 @@ class InferenceConfig(coco.CocoConfig):
     # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
+    if os.getenv('IMAGE_MAX_DIM') is not None:
+       IMAGE_MAX_DIM = int(os.getenv('IMAGE_MAX_DIM'))
+    if os.getenv('IMAGE_MIN_DIM') is not None:
+       IMAGE_MIN_DIM = int(os.getenv('IMAGE_MIN_DIM'))
 
 config = InferenceConfig()
 config.display()
@@ -221,8 +225,9 @@ import time
 # Create a VideoCapture object
 #url_camera = 'http://108.53.114.166/mjpg/video.mjpg' # Newark overpass
 #url_camera = 'http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg' # Kiosk
-url_camera = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Caffe
-
+url_camera = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Cafe
+if os.getenv('URL_CAMERA') is not None:
+  url_camera = os.getenv('URL_CAMERA')
 
 def open_source_video(url):
   # allow multiple attempts to open video source
@@ -234,35 +239,33 @@ def open_source_video(url):
     print("Unable to read camera feed: %d out of %d"%(count_attempts, max_num_attempts))
     if count_attempts == max_num_attempts:
       break
+    time.sleep(0.5)
     count_attempts += 1
     cap = cv2.VideoCapture(url)
   return cap # return a video capture object that is in open state 
 
-cap = open_source_video(url_camera)
-if (cap.isOpened() == False):
-  exit()
 
-# Default resolutions of the frame are obtained.The default resolutions are system dependent.
-# We convert the resolutions from float to integer.
-frame_width = int(cap.get(3))
-frame_height = int(cap.get(4))
+def create_video_writer(cap, filename):
+  # Default resolutions of the frame are obtained.The default resolutions are system dependent.
+  # We convert the resolutions from float to integer.
+  frame_width = int(cap.get(3))
+  frame_height = int(cap.get(4))
 
-# Define the codec and create VideoWriter object.The output is stored in 'outpy.avi' file.
-outputfilename = os.path.join(VIDEO_OUTPUT_DIR, 'video_segmentation_mjpg4.avi')
-out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
-# The maximum number of frames to be written
-max_number_frames_to_be_saved = 100
+  # Define the codec and create VideoWriter object.The output is stored in 'outpy.avi' file.
+  outputfilename = os.path.join(VIDEO_OUTPUT_DIR, filename + '.avi')
+  out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
+  return out
 
 colors = visualize.random_colors(10) # assume that there are 10 instances
 
 import os
 import zmq
 
-def detect_and_save_frames(vc, model, max_frames_to_be_saved):
+def detect_and_save_frames(cap, model, max_frames_to_be_saved):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
   while(True):
-    ret, frame = vc.read()
+    ret, frame = cap.read()
     if ret == False: 
       break
 
@@ -319,8 +322,6 @@ def detect_and_send_frames(cap, model, socket):
 
 
 
-
-
 SERVICE_PORT = os.getenv('SKT_PORT', None)
 if SERVICE_PORT is not None:
   SERVICE_SOCKET = "tcp://*:%s"%(SERVICE_PORT)
@@ -328,9 +329,28 @@ if SERVICE_PORT is not None:
   socket = context.socket(zmq.REP)
   # ZMQ server must be listening on request first
   socket.bind(SERVICE_SOCKET)
+  print("Listening on request from client side ...")
+  request = socket.recv_json(flags=0)
+  result={'corr_id': request['corr_id'], 'shape': None, 'dtype': None}
+  socket.send_json(result)
+  # now open video to avoid possible ffmpeg overread error
+  cap = open_source_video(url_camera)
+  if (cap.isOpened() == False):
+    exit()
   detect_and_send_frames(cap, model, socket)
 else:
-  detect_and_save_frames(cap, model, max_number_frames_to_be_saved)
+  cap = open_source_video(url_camera)
+  if (cap.isOpened() == False):
+    exit()
+  output_filename = os.getenv('OUTPUT_VIDEO_FILENAME')
+  if output_filename is None:
+    output_filename = 'video_segmentation_mjpg4'
+  out = create_video_writer(cap, output_filename)
+  # The maximum number of frames to be written
+  max_number_frames_to_be_saved = os.getenv('MAX_FRAMES_TO_BE_SAVED')
+  if max_number_frames_to_be_saved is None:
+    max_number_frames_to_be_saved = 100
+  detect_and_save_frames(cap, model, int(max_number_frames_to_be_saved))
 
 # When everything done, release the video capture and video write objects
 cap.release()
