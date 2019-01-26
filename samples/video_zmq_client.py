@@ -7,17 +7,25 @@ import uuid
 import sys
 import matplotlib.pyplot as plt
 import time
-import pylab
 from imutils.video import FileVideoStream
 from imutils.video import FPS
-import argparse
 import imutils
 import time
 import cv2
 import json
- 
+import argparse
 
-SERVICE_SOCKET='tcp://localhost:5566'
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--server-ip", help="server host IP address", default='localhost')
+parser.add_argument("--port", help="Port number associated with the socket", default=5566)
+args = parser.parse_args()
+
+server_ip = args.server_ip
+port = args.port
+
+SERVICE_SOCKET='tcp://' + server_ip + ':' + str(port)
 
 ctx=zmq.Context()
 socket=ctx.socket(zmq.REQ)
@@ -54,7 +62,8 @@ while True:
     cv2.imshow('Processed Video', frame)
     cv2.resizeWindow('Processed Video', 800,600)
 
-    cv2.waitKey(1)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+      break
     fps.update()
 
 # stop the timer and display FPS information
@@ -63,7 +72,6 @@ print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
 print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
 
 cv2.destroyAllWindows()
-fvs.stop()
 
 socket.close()
 ctx.term()
