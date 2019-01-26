@@ -223,19 +223,24 @@ import time
 #url_camera = 'http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg' # Kiosk
 url_camera = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Caffe
 
-# allow multiple attempts to open video source
-max_num_attempts = 10
-count_attempts = 0
-while True:
-  cap = cv2.VideoCapture(url_camera)
+
+def open_source_video(url):
+  # allow multiple attempts to open video source
+  max_num_attempts = 10
+  count_attempts = 1
+  cap = cv2.VideoCapture(url)
   # Check if camera opened successfully
-  if (cap.isOpened() == False): 
-    count_attempts += 1
+  while (cap.isOpened() == False):
     print("Unable to read camera feed: %d out of %d"%(count_attempts, max_num_attempts))
     if count_attempts == max_num_attempts:
-      exit()
-  else:
-    break
+      break
+    count_attempts += 1
+    cap = cv2.VideoCapture(url)
+  return cap # return a video capture object that is in open state 
+
+cap = open_source_video(url_camera)
+if (cap.isOpened() == False):
+  exit()
 
 # Default resolutions of the frame are obtained.The default resolutions are system dependent.
 # We convert the resolutions from float to integer.
