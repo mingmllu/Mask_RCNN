@@ -256,7 +256,10 @@ def create_video_writer(cap, filename):
   out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
   return out
 
-colors = visualize.random_colors(10) # assume that there are 10 instances
+if os.getenv('RANDOM_MASK_COLORS') is not None:
+  colors = None  # random colors from frame to frame
+else:
+  colors = visualize.random_colors(10) # assume that there are 10 instances
 
 import os
 import zmq
