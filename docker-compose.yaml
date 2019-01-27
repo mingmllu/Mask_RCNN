@@ -1,15 +1,20 @@
 version: '3.7'
 services:
     mask_rcnn:
-      image: "mmlu/mask_rcnn:v0.2"
+      image: "mmlu/mask_rcnn_gpu:v0.1"
       container_name: mask-rcnn-gpu
       ports:
        - "5566:5566"
       environment:
+       - IMAGE_SOURCE=demo.mp4
        - IMAGE_MAX_DIM=1024
        - IMAGE_MIN_DIM=800
        - SKT_PORT=5566
        - OUTPUT_VIDEO_FILENAME=
        - MAX_FRAMES_TO_BE_SAVED=100
        - RANDOM_MASK_COLORS=
+      volumes:
+       - ~/Downloads:/mask_rcnn/videos/
+
+       
 

@@ -223,25 +223,25 @@ import numpy as np
 import time
 
 # Create a VideoCapture object
-#url_camera = 'http://108.53.114.166/mjpg/video.mjpg' # Newark overpass
-#url_camera = 'http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg' # Kiosk
-url_camera = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Cafe
-if os.getenv('URL_CAMERA') is not None:
-  url_camera = os.getenv('URL_CAMERA')
+#image_source = 'http://108.53.114.166/mjpg/video.mjpg' # Newark overpass
+#image_source = 'http://root:fitecam@135.222.247.179:9122/mjpg/video.mjpg' # Kiosk
+image_source = 'http://anomaly:lucent@135.104.127.10:58117/mjpg/video.mjpg' # Cafe
+if os.getenv('IMAGE_SOURCE'):
+  image_source = os.getenv('IMAGE_SOURCE')
 
-def open_source_video(url):
+def open_source_video(image_source):
   # allow multiple attempts to open video source
   max_num_attempts = 10
   count_attempts = 1
-  cap = cv2.VideoCapture(url)
+  cap = cv2.VideoCapture(image_source)
   # Check if camera opened successfully
   while (cap.isOpened() == False):
-    print("Unable to read camera feed: %d out of %d"%(count_attempts, max_num_attempts))
+    print("Unable to open image source %s: %d out of %d"%(image_source, count_attempts, max_num_attempts))
     if count_attempts == max_num_attempts:
       break
     time.sleep(0.5)
     count_attempts += 1
-    cap = cv2.VideoCapture(url)
+    cap = cv2.VideoCapture(image_source)
   return cap # return a video capture object that is in open state 
 
 
@@ -256,7 +256,7 @@ def create_video_writer(cap, filename):
   out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
   return out
 
-if os.getenv('RANDOM_MASK_COLORS') is not None:
+if os.getenv('RANDOM_MASK_COLORS'):
   colors = None  # random colors from frame to frame
 else:
   colors = visualize.random_colors(10) # assume that there are 10 instances
@@ -326,7 +326,7 @@ def detect_and_send_frames(cap, model, socket):
 
 
 SERVICE_PORT = os.getenv('SKT_PORT', None)
-if SERVICE_PORT is not None:
+if SERVICE_PORT:
   SERVICE_SOCKET = "tcp://*:%s"%(SERVICE_PORT)
   context = zmq.Context()
   socket = context.socket(zmq.REP)
@@ -337,21 +337,21 @@ if SERVICE_PORT is not None:
   result={'corr_id': request['corr_id'], 'shape': None, 'dtype': None}
   socket.send_json(result)
   # now open video to avoid possible ffmpeg overread error
-  cap = open_source_video(url_camera)
+  cap = open_source_video(image_source)
   if (cap.isOpened() == False):
     exit()
   detect_and_send_frames(cap, model, socket)
 else:
-  cap = open_source_video(url_camera)
+  cap = open_source_video(image_source)
   if (cap.isOpened() == False):
     exit()
   output_filename = os.getenv('OUTPUT_VIDEO_FILENAME')
-  if output_filename is None:
+  if not output_filename:
     output_filename = 'video_segmentation_mjpg4'
   out = create_video_writer(cap, output_filename)
   # The maximum number of frames to be written
   max_number_frames_to_be_saved = os.getenv('MAX_FRAMES_TO_BE_SAVED')
-  if max_number_frames_to_be_saved is None:
+  if not max_number_frames_to_be_saved:
     max_number_frames_to_be_saved = 100
   detect_and_save_frames(cap, model, int(max_number_frames_to_be_saved))
 
