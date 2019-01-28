@@ -354,8 +354,8 @@ else:
   if not max_number_frames_to_be_saved:
     max_number_frames_to_be_saved = 100
   detect_and_save_frames(cap, model, int(max_number_frames_to_be_saved))
+  out.release()
 
-# When everything done, release the video capture and video write objects
+# When everything done, release the video capture
 cap.release()
-out.release()
 
