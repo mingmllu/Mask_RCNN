@@ -198,7 +198,7 @@ import numpy as np
 import time
 
 # Create a VideoCapture object
-cap = cv2.VideoCapture('fite_lab_demo.mp4')
+cap = cv2.VideoCapture('demo.mp4')
 
 # Check if camera opened successfully
 if (cap.isOpened() == False): 

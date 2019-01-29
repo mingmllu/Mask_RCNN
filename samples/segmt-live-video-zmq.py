@@ -63,9 +63,9 @@ class InferenceConfig(coco.CocoConfig):
     # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
-    if os.getenv('IMAGE_MAX_DIM') is not None:
+    if os.getenv('IMAGE_MAX_DIM'):
        IMAGE_MAX_DIM = int(os.getenv('IMAGE_MAX_DIM'))
-    if os.getenv('IMAGE_MIN_DIM') is not None:
+    if os.getenv('IMAGE_MIN_DIM'):
        IMAGE_MIN_DIM = int(os.getenv('IMAGE_MIN_DIM'))
 
 config = InferenceConfig()
