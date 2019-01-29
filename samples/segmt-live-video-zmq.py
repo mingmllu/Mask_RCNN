@@ -158,6 +158,9 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     #    auto_show = True
 
     # Generate random colors
+    diff_colors_person = False
+    if not colors:
+      diff_colors_person = True
     colors = colors or visualize.random_colors(N)
 
     # Show area outside image boundaries.
@@ -172,7 +175,10 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         class_id = class_ids[i]
         if class_id != class_names.index('person'):
             continue
-        color = colors[class_id%len(colors)]
+        if diff_colors_person:
+          color = colors[i%len(colors)]
+        else:
+          color = colors[class_id%len(colors)]
 
         # Bounding box
         if not np.any(boxes[i]):
