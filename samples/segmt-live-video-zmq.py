@@ -264,6 +264,10 @@ else:
 import os
 import zmq
 
+SOURCE_IMAGE_RESIZE_FACTOR = None
+if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
+  SOURCE_IMAGE_RESIZE_FACTOR = float(os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'))
+
 def detect_and_save_frames(cap, model, max_frames_to_be_saved):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
@@ -271,6 +275,11 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved):
     ret, frame = cap.read()
     if ret == False: 
       break
+
+    # reduce the input image size to speed up the masking of the image
+    if SOURCE_IMAGE_RESIZE_FACTOR and SOURCE_IMAGE_RESIZE_FACTOR < 1:
+      fw = fh = SOURCE_IMAGE_RESIZE_FACTOR
+      frame = cv2.resize(frame, (0,0), fx=fw, fy=fh)
 
     start_time = time.time()
     results = model.detect([frame], verbose=0)
@@ -298,6 +307,11 @@ def detect_and_send_frames(cap, model, socket):
     ret, frame = cap.read()
     if ret == False:
       break
+    
+    # reduce the input image size to speed up the masking of the image
+    if SOURCE_IMAGE_RESIZE_FACTOR and SOURCE_IMAGE_RESIZE_FACTOR < 1:
+      fw = fh = SOURCE_IMAGE_RESIZE_FACTOR
+      frame = cv2.resize(frame, (0,0), fx=fw, fy=fh)
 
     start_time = time.time()
     results = model.detect([frame], verbose=0)
