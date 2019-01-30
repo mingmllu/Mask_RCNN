@@ -400,7 +400,7 @@ def create_video_writer(cap, filename):
   # We convert the resolutions from float to integer.
   frame_width = int(cap.get(3))
   frame_height = int(cap.get(4))
-
+ 
   # Define the codec and create VideoWriter object.The output is stored in 'outpy.avi' file.
   outputfilename = os.path.join(VIDEO_OUTPUT_DIR, filename + '.avi')
   out = cv2.VideoWriter(outputfilename, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
@@ -418,7 +418,7 @@ SOURCE_IMAGE_RESIZE_FACTOR = None
 if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
   SOURCE_IMAGE_RESIZE_FACTOR = float(os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'))
 
-def detect_and_save_frames(cap, model, max_frames_to_be_saved):
+def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
   while(True):
@@ -441,7 +441,9 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved):
     print("Rendering %f"%(time.time() - finish_time))
  
     # Write the frame into the file 'output.avi'
-    out.write(masked_frame)
+    frame_width = int(cap.get(3))
+    frame_height = int(cap.get(4))
+    video_sink.write(cv2.resize(masked_frame, (frame_width, frame_height)))
     n_frames += 1
 
     skimage.io.imsave(os.path.join(VIDEO_OUTPUT_DIR, 'masked_frame_%05d.jpg'%(n_frames)), masked_frame)
@@ -517,7 +519,7 @@ else:
   max_number_frames_to_be_saved = os.getenv('MAX_FRAMES_TO_BE_SAVED')
   if not max_number_frames_to_be_saved:
     max_number_frames_to_be_saved = 100
-  detect_and_save_frames(cap, model, int(max_number_frames_to_be_saved))
+  detect_and_save_frames(cap, model, int(max_number_frames_to_be_saved), out)
   out.release()
 
 # When everything done, release the video capture
