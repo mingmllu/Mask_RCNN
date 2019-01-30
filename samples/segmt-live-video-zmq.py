@@ -127,6 +127,49 @@ import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 
+def fillPolygonOnNormalizedMap(polyVertices):
+  # polyVertices: N-by-2 array
+  left = np.amin(polyVertices[:,0])
+  right = np.amax(polyVertices[:,0])
+  top = np.amin(polyVertices[:,1])
+  bottom = np.amax(polyVertices[:,1])
+  map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
+  cv2.fillPoly(map, [polyVertices-np.array([left,top])], color=(255))
+  return (left, top, right, bottom, map)
+
+def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
+  # tuplePolygonA and tuplePolygonB
+  # (xmin, ymin, xmax, ymax, filledPolygon2Dmap)
+  A_left = tuplePolygonA[0]
+  A_right = tuplePolygonA[2]
+  A_top = tuplePolygonA[1]
+  A_bottom = tuplePolygonA[3]
+  B_left = tuplePolygonB[0]
+  B_right = tuplePolygonB[2]
+  B_top = tuplePolygonB[1]
+  B_bottom = tuplePolygonB[3]
+
+  if B_left >= A_right or B_top >= A_bottom:
+    return 0
+  if A_left >= B_right or A_top >= B_bottom:
+    return 0
+
+  Overlap_left = max(A_left, B_left)
+  Overlap_right = min(A_right, B_right)
+  Overlap_top = max(A_top, B_top)
+  Overlap_bottom = min(A_bottom, B_bottom)
+  
+  Overlap_A_map = tuplePolygonA[4][(Overlap_top-A_top):(min(A_bottom,Overlap_bottom)-A_top+1),
+                  (Overlap_left-A_left):(min(A_right,Overlap_right)-A_left+1)]
+  Overlap_B_map = tuplePolygonB[4][(Overlap_top-B_top):(min(B_bottom,Overlap_bottom)-B_top+1),
+                  (Overlap_left-B_left):(min(B_right,Overlap_right)-B_left+1)]
+  Overlap_map_boolean = np.logical_and(Overlap_A_map, Overlap_B_map)
+
+  Overlap_count = np.count_nonzero(Overlap_map_boolean)
+  Union_count = np.count_nonzero(tuplePolygonA[4]) + np.count_nonzero(tuplePolygonB[4]) - Overlap_count
+
+  return Overlap_count/Union_count
+
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
@@ -228,6 +271,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       pts = contours[0].astype(np.int32).reshape((-1, 1, 2))
       # switch x with y otherwise the contours will be rotated ny 90 degrees
       cv2.polylines(masked_image_uint8, [pts[:,:,[1,0]]], True, (0, 255, 255))
+      t = fillPolygonOnNormalizedMap(contours[0].astype(np.int32))
     return masked_image_uint8
 
 import cv2
