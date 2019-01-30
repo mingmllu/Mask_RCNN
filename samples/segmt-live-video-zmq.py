@@ -128,13 +128,13 @@ from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 
 def fillPolygonInBoundingMap(polyVertices):
-  # polyVertices: N-by-2 array
-  left = np.amin(polyVertices[:,0])
-  right = np.amax(polyVertices[:,0])
-  top = np.amin(polyVertices[:,1])
-  bottom = np.amax(polyVertices[:,1])
+  # polyVertices: a list of N-by-2 arrays
+  left = np.amin(polyVertices[0][:,0])
+  right = np.amax(polyVertices[0][:,0])
+  top = np.amin(polyVertices[0][:,1])
+  bottom = np.amax(polyVertices[0][:,1])
   map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
-  cv2.fillPoly(map, [polyVertices-np.array([left,top])], color=(255))
+  cv2.fillPoly(map, [polyVertices[0]-np.array([left,top])], color=(255))
   polyArea = np.count_nonzero(map)
   return (left, top, right, bottom, map, polyArea)
 
@@ -267,12 +267,17 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         #    ax.add_patch(p)
     masked_image_uint8 = masked_image.astype(np.uint8)
     for contours in list_contours:
-      # contours is single-element list
-      # cv2,polylines requires shape (N,1,2)
-      pts = contours[0].astype(np.int32).reshape((-1, 1, 2))
-      # switch x with y otherwise the contours will be rotated ny 90 degrees
-      cv2.polylines(masked_image_uint8, [pts[:,:,[1,0]]], True, (0, 255, 255))
-      t = fillPolygonInBoundingMap(contours[0].astype(np.int32))
+      # contours is a list
+      # cv2.polylines requires shape (-1,1,2)
+      pts3d = []
+      for c in contours:
+        # switch x with y otherwise the contours will be rotated by 90 degrees
+        pts3d.append(c.astype(np.int32).reshape((-1, 1, 2))[:,:,[1,0]])
+      cv2.polylines(masked_image_uint8, pts3d, True, (0, 255, 255))
+      pts2d = []  # each element is an array of the shape (-1,2)
+      for c in contours:
+        pts2d.append(c.astype(np.int32))
+      t = fillPolygonInBoundingMap(pts2d)
     return masked_image_uint8
 
 import cv2
