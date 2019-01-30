@@ -127,7 +127,7 @@ import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 
-def fillPolygonOnNormalizedMap(polyVertices):
+def fillPolygonInBoundingMap(polyVertices):
   # polyVertices: N-by-2 array
   left = np.amin(polyVertices[:,0])
   right = np.amax(polyVertices[:,0])
@@ -135,7 +135,8 @@ def fillPolygonOnNormalizedMap(polyVertices):
   bottom = np.amax(polyVertices[:,1])
   map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
   cv2.fillPoly(map, [polyVertices-np.array([left,top])], color=(255))
-  return (left, top, right, bottom, map)
+  polyArea = np.count_nonzero(map)
+  return (left, top, right, bottom, map, polyArea)
 
 def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
   # tuplePolygonA and tuplePolygonB
@@ -166,7 +167,7 @@ def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
   Overlap_map_boolean = np.logical_and(Overlap_A_map, Overlap_B_map)
 
   Overlap_count = np.count_nonzero(Overlap_map_boolean)
-  Union_count = np.count_nonzero(tuplePolygonA[4]) + np.count_nonzero(tuplePolygonB[4]) - Overlap_count
+  Union_count = tuplePolygonA[5] + tuplePolygonB[5] - Overlap_count
 
   return Overlap_count/Union_count
 
@@ -271,7 +272,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       pts = contours[0].astype(np.int32).reshape((-1, 1, 2))
       # switch x with y otherwise the contours will be rotated ny 90 degrees
       cv2.polylines(masked_image_uint8, [pts[:,:,[1,0]]], True, (0, 255, 255))
-      t = fillPolygonOnNormalizedMap(contours[0].astype(np.int32))
+      t = fillPolygonInBoundingMap(contours[0].astype(np.int32))
     return masked_image_uint8
 
 import cv2
