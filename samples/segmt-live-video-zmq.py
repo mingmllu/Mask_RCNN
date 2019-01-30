@@ -203,6 +203,40 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     else:
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
 
+
+
+    # Find the instances of interest, e.g., persons
+    instances_of_interest = []
+    for i in range(N):
+      class_id = class_ids[i]
+      if class_id == class_names.index('person'):
+        instances_of_interest.append(i)
+
+    # Find the contours that cover detected instances
+    dict_contours = {}
+    for i in instances_of_interest:
+      # Mask
+      mask = masks[:, :, i]
+      # Mask Polygon
+      # Pad to ensure proper polygons for masks that touch image edges.
+      padded_mask = np.zeros(
+            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+      padded_mask[1:-1, 1:-1] = mask
+      dict_contours[i] = find_contours(padded_mask, 0.5)
+    
+    # Analyze the contours and calculate the areas
+    dict_polygons_in_bounding_map = {}
+    for i in dict_contours:
+      pts2d = []  # each element is an array of the shape (-1,2)
+      for c in dict_contours[i]: # the value is a list
+        pts2d.append(c.astype(np.int32))
+      dict_polygons_in_bounding_map[i] = fillPolygonInBoundingMap(pts2d)
+
+
+
+
+
+
     # If no axis is passed, create one and automatically call show()
     #auto_show = False
     #if not ax:
@@ -224,10 +258,8 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
 
     masked_image = image.astype(np.uint32).copy()
     list_contours = []
-    for i in range(N):
+    for i in instances_of_interest:
         class_id = class_ids[i]
-        if class_id != class_names.index('person'):
-            continue
         if diff_colors_person:
           color = colors[i%len(colors)]
         else:
@@ -274,7 +306,8 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         #    p = Polygon(verts, facecolor="none", edgecolor=color)
         #    ax.add_patch(p)
     masked_image_uint8 = masked_image.astype(np.uint8)
-    for contours in list_contours:
+    for i in dict_contours:
+      contours = dict_contours[i]
       # contours is a list
       # cv2.polylines requires shape (-1,1,2)
       pts3d = []
@@ -282,10 +315,6 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         # switch x with y otherwise the contours will be rotated by 90 degrees
         pts3d.append(c.astype(np.int32).reshape((-1, 1, 2))[:,:,[1,0]])
       cv2.polylines(masked_image_uint8, pts3d, True, (0, 255, 255))
-      pts2d = []  # each element is an array of the shape (-1,2)
-      for c in contours:
-        pts2d.append(c.astype(np.int32))
-      t = fillPolygonInBoundingMap(pts2d)
     return masked_image_uint8
 
 import cv2
