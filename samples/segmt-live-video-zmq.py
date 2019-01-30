@@ -127,6 +127,10 @@ import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 
+instance_id_manager = 0
+dict_instance_history = {}
+instance_memory_length = 2 #(4) #16 #5  # the number of past frames to remember
+
 def fillPolygonInBoundingMap(polyVertices):
   left = 10000 # sufficiently large coordinate in x
   right = 0    # the minimum possible coordinate in x
@@ -179,6 +183,9 @@ def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
 
   return Overlap_count/Union_count
 
+def get_iou_score(item):
+  return item[2]
+
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
@@ -196,6 +203,10 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     colors: (optional) An array or colors to use with each object
     captions: (optional) A list of strings to use as captions for each object
     """
+
+    global instance_id_manager
+    global dict_instance_history
+
     # Number of instances
     N = boxes.shape[0]
     if not N:
@@ -203,7 +214,15 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     else:
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
 
-
+    # Update the dictionary of past detection results
+    uid_list = list(dict_instance_history.keys())
+    for uid in uid_list:
+      if len(dict_instance_history[uid]) > instance_memory_length:
+        dict_instance_history[uid].pop(0) # discard the oldest one
+    uid_list = list(dict_instance_history.keys())
+    for uid in uid_list:
+      if len(dict_instance_history[uid]) == 0:
+        dict_instance_history.pop(uid)
 
     # Find the instances of interest, e.g., persons
     instances_of_interest = []
@@ -232,22 +251,52 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         pts2d.append(c.astype(np.int32))
       dict_polygons_in_bounding_map[i] = fillPolygonInBoundingMap(pts2d)
 
-
-
-
-
-
-    # If no axis is passed, create one and automatically call show()
-    #auto_show = False
-    #if not ax:
-    #    _, ax = plt.subplots(1, figsize=figsize)
-    #    auto_show = True
+    # Initialize the buffer for the past detection results
+    if instance_id_manager == 0:
+      for i in dict_polygons_in_bounding_map:
+        instance_id_manager += 1
+        uid = instance_id_manager
+        dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
 
     # Generate random colors
     diff_colors_person = False
     if not colors:
       diff_colors_person = True
     colors = colors or visualize.random_colors(N)
+
+    # Find the color of each detected instance
+    dict_colors = {}
+    list_matching_scores = []
+    for i in dict_polygons_in_bounding_map:
+      uid_matching = 0 # invalid ID
+      max_iou = 0.0 # how much does it to match the existing detected instances
+      # here "uid" is a unique ID assigned to each detected instance
+      for uid in dict_instance_history:
+        for contour_map in reversed(dict_instance_history[uid]):
+          iou = computeIntersectionPolygons(dict_polygons_in_bounding_map[i], contour_map)
+          if iou > max_iou:
+            max_iou = iou
+            uid_matching = uid
+      if max_iou > 0:
+        list_matching_scores.append((i, uid_matching, max_iou))
+    list_matching_scores.sort(key=get_iou_score, reverse=True) # in decending order 
+    uid_set = set(dict_instance_history.keys())
+    for e in list_matching_scores: # e is a tuple
+      i = e[0] # the instance ID in the current frame
+      uid = e[1]  # unique existing instance ID
+      iou_score = e[2]
+      if iou_score > 0.25 and uid in uid_set:
+        uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
+        dict_colors[i] = colors[uid%len(colors)]
+        dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+    # What if the instances do not relate to any of the existing identified instances ? 
+    for i in dict_polygons_in_bounding_map:
+      if i not in dict_colors: # this would be a new instance
+        instance_id_manager += 1
+        uid = instance_id_manager
+        dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+        dict_colors[i] = colors[uid%len(colors)]
+
 
     # Show area outside image boundaries.
     #height, width = image.shape[:2]
@@ -264,6 +313,8 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
           color = colors[i%len(colors)]
         else:
           color = colors[class_id%len(colors)]
+
+        color = dict_colors[i]
 
         # Bounding box
         if not np.any(boxes[i]):
@@ -471,4 +522,5 @@ else:
 
 # When everything done, release the video capture
 cap.release()
+
 
