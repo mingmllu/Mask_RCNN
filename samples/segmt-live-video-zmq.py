@@ -128,13 +128,21 @@ from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 
 def fillPolygonInBoundingMap(polyVertices):
+  left = 10000 # sufficiently large coordinate in x
+  right = 0    # the minimum possible coordinate in x
+  top = 10000  # sufficiently large coordinate in y
+  bottom = 0   # the minimum possible coordinate in y
   # polyVertices: a list of N-by-2 arrays
-  left = np.amin(polyVertices[0][:,0])
-  right = np.amax(polyVertices[0][:,0])
-  top = np.amin(polyVertices[0][:,1])
-  bottom = np.amax(polyVertices[0][:,1])
+  for poly in polyVertices:
+    left = min(left, np.amin(poly[:,0]))
+    right = max(right, np.amax(poly[:,0]))
+    top = min(top, np.amin(poly[:,1]))
+    bottom = max(bottom, np.amax(poly[:,1]))
+  pts = []
+  for poly in polyVertices:
+    pts.append(poly-np.array([left,top]))
   map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
-  cv2.fillPoly(map, [polyVertices[0]-np.array([left,top])], color=(255))
+  cv2.fillPoly(map, pts, color=(255))
   polyArea = np.count_nonzero(map)
   return (left, top, right, bottom, map, polyArea)
 
