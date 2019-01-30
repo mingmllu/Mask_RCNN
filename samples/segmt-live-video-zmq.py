@@ -171,6 +171,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     #ax.set_title(title)
 
     masked_image = image.astype(np.uint32).copy()
+    list_contours = []
     for i in range(N):
         class_id = class_ids[i]
         if class_id != class_names.index('person'):
@@ -210,19 +211,24 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
-        #padded_mask = np.zeros(
-        #    (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
-        #padded_mask[1:-1, 1:-1] = mask
-        #contours = find_contours(padded_mask, 0.5)
+        padded_mask = np.zeros(
+            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+        padded_mask[1:-1, 1:-1] = mask
+        contours = find_contours(padded_mask, 0.5)
+        list_contours.append(contours)
         #for verts in contours:
             # Subtract the padding and flip (y, x) to (x, y)
         #    verts = np.fliplr(verts) - 1
         #    p = Polygon(verts, facecolor="none", edgecolor=color)
         #    ax.add_patch(p)
-    return masked_image.astype(np.uint8) 
-#    ax.imshow(masked_image.astype(np.uint8))
-#    if auto_show:
-#        plt.show()
+    masked_image_uint8 = masked_image.astype(np.uint8)
+    for contours in list_contours:
+      # contours is single-element list
+      # cv2,polylines requires shape (N,1,2)
+      pts = contours[0].astype(np.int32).reshape((-1, 1, 2))
+      # switch x with y otherwise the contours will be rotated ny 90 degrees
+      cv2.polylines(masked_image_uint8, [pts[:,:,[1,0]]], True, (0, 255, 255))
+    return masked_image_uint8
 
 import cv2
 import numpy as np
