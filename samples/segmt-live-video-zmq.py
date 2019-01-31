@@ -409,7 +409,7 @@ def create_video_writer(cap, filename):
 if os.getenv('RANDOM_MASK_COLORS'):
   colors = None  # random colors from frame to frame
 else:
-  colors = visualize.random_colors(10) # assume that there are 10 instances
+  colors = visualize.random_colors(20) # assume that there are 20 instances
 
 import os
 import zmq

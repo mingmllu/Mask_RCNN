@@ -14,16 +14,19 @@ import time
 import cv2
 import json
 import argparse
+from datetime import datetime
 
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--server-ip", help="server host IP address", default='localhost')
+parser.add_argument("--server-ip", help="Server host IP address", default='localhost')
 parser.add_argument("--port", help="Port number associated with the socket", default=5566)
+parser.add_argument("--record-video", help="File name of the recorded video", default='')
 args = parser.parse_args()
 
 server_ip = args.server_ip
 port = args.port
+video_file_name = args.record_video
 
 SERVICE_SOCKET='tcp://' + server_ip + ':' + str(port)
 
@@ -31,6 +34,16 @@ ctx=zmq.Context()
 socket=ctx.socket(zmq.REQ)
 
 socket.connect(SERVICE_SOCKET)
+
+if not video_file_name:
+  # Define the codec and create VideoWriter object.The output is stored in the file.
+  now = datetime.now().strftime("%Y%m%d%H%M%S")
+  video_file_name = "video_{}_{}.avi".format(port, now)
+
+frame_width = 640
+frame_height = 360
+video_sink = cv2.VideoWriter(video_file_name, 
+            cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
 
 print("[INFO] starting to looking at socket ...")
 
@@ -61,6 +74,8 @@ while True:
     cv2.namedWindow('Processed Video', cv2.WINDOW_NORMAL)
     cv2.imshow('Processed Video', frame)
     cv2.resizeWindow('Processed Video', 800,600)
+
+    video_sink.write(cv2.resize(frame, (frame_width, frame_height)))
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
