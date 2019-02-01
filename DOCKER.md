@@ -1,7 +1,7 @@
 ### Dockerize the mask RCNN for serving
 
 ```
-docker build --no-cache --build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy -t mmlu_test_py36k:v0.1 .
+docker build --no-cache --build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy -t mmlu/mask_rcnn_gpu:v0.1 .
 ```
 
 ### Use the Docker image
