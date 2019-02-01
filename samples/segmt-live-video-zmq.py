@@ -126,6 +126,7 @@ from skimage.measure import find_contours
 import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
+import time
 
 instance_id_manager = 0
 dict_instance_history = {}
@@ -148,7 +149,7 @@ def fillPolygonInBoundingMap(polyVertices):
   map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
   cv2.fillPoly(map, pts, color=(255))
   polyArea = np.count_nonzero(map)
-  return (left, top, right, bottom, map, polyArea)
+  return (left, top, right, bottom, map, polyArea, time.time())
 
 def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
   # tuplePolygonA and tuplePolygonB
@@ -219,6 +220,11 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     for uid in uid_list:
       if len(dict_instance_history[uid]) > instance_memory_length:
         dict_instance_history[uid].pop(0) # discard the oldest one
+      while (len(dict_instance_history[uid]) > 0):
+        if (time.time() - dict_instance_history[uid][0][6]) > 10.0: # discard stale frames
+          dict_instance_history[uid].pop(0)
+        else:
+          break
     uid_list = list(dict_instance_history.keys())
     for uid in uid_list:
       if len(dict_instance_history[uid]) == 0:
