@@ -266,6 +266,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
 
     # Find the color of each detected instance
     dict_colors = {}
+    dict_inst_index_to_uid = {} # current frame's instance index to unique ID
     list_matching_scores = []
     for i in dict_polygons_in_bounding_map:
       uid_matching = 0 # invalid ID
@@ -288,6 +289,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       if iou_score > 0.25 and uid in uid_set:
         uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
         dict_colors[i] = colors[uid%len(colors)]
+        dict_inst_index_to_uid[i] = uid
         dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
     # What if the instances do not relate to any of the existing identified instances ? 
     for i in dict_polygons_in_bounding_map:
@@ -296,14 +298,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         uid = instance_id_manager
         dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
         dict_colors[i] = colors[uid%len(colors)]
-
-
-    # Show area outside image boundaries.
-    #height, width = image.shape[:2]
-    #ax.set_ylim(height + 10, -10)
-    #ax.set_xlim(-10, width + 10)
-    #ax.axis('off')
-    #ax.set_title(title)
+        dict_inst_index_to_uid[i] = uid
 
     masked_image = image.astype(np.uint32).copy()
     list_contours = []
@@ -366,6 +361,15 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         # switch x with y otherwise the contours will be rotated by 90 degrees
         pts3d.append(c.astype(np.int32).reshape((-1, 1, 2))[:,:,[1,0]])
       cv2.polylines(masked_image_uint8, pts3d, True, (0, 255, 255))
+      cy = (dict_polygons_in_bounding_map[i][0] + dict_polygons_in_bounding_map[i][2])//2
+      cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
+      font = cv2.FONT_HERSHEY_SIMPLEX
+      fontScale = 0.5
+      fontColor = (0,255,255)
+      lineType = 1
+      uid = dict_inst_index_to_uid[i]
+      cv2.putText(masked_image_uint8, str(uid), (cx, cy), font, fontScale, fontColor, lineType)
+
     return masked_image_uint8
 
 import cv2
