@@ -293,7 +293,7 @@ class MaskRCNNTracker():
         uid = self.instance_id_manager
         self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
 
-    # Matching existing instances with the instances in the current frame
+    # Coorespondence between existing instances and the instances in the current frame
     dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
     list_matching_scores = []
     for i in dict_polygons_in_bounding_map:
