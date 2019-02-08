@@ -5,8 +5,6 @@
 # 
 # A quick intro to using the pre-trained model to detect and segment objects.
 
-# In[1]:
-
 
 import os
 import keras
@@ -128,107 +126,138 @@ from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
 import time
 
-instance_id_manager = 0
-dict_instance_history = {}
-instance_memory_length = 2 #(4) #16 #5  # the number of past frames to remember
+class MaskRCNNTracker():
+  """Implements tracker based segmentation ouputs.
 
-def fillPolygonInBoundingMap(polyVertices):
-  left = 10000 # sufficiently large coordinate in x
-  right = 0    # the minimum possible coordinate in x
-  top = 10000  # sufficiently large coordinate in y
-  bottom = 0   # the minimum possible coordinate in y
-  # polyVertices: a list of N-by-2 arrays
-  for poly in polyVertices:
-    left = min(left, np.amin(poly[:,0]))
-    right = max(right, np.amax(poly[:,0]))
-    top = min(top, np.amin(poly[:,1]))
-    bottom = max(bottom, np.amax(poly[:,1]))
-  pts = []
-  for poly in polyVertices:
-    pts.append(poly-np.array([left,top]))
-  map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
-  cv2.fillPoly(map, pts, color=(255))
-  polyArea = np.count_nonzero(map)
-  return (left, top, right, bottom, map, polyArea, time.time())
+  Params:
+  - 
 
-def computeIntersectionPolygons(tuplePolygonA, tuplePolygonB):
-  # tuplePolygonA and tuplePolygonB
-  # (xmin, ymin, xmax, ymax, filledPolygon2Dmap)
-  A_left = tuplePolygonA[0]
-  A_right = tuplePolygonA[2]
-  A_top = tuplePolygonA[1]
-  A_bottom = tuplePolygonA[3]
-  B_left = tuplePolygonB[0]
-  B_right = tuplePolygonB[2]
-  B_top = tuplePolygonB[1]
-  B_bottom = tuplePolygonB[3]
+  Inputs: 
+  - 
 
-  if B_left >= A_right or B_top >= A_bottom:
-    return 0
-  if A_left >= B_right or A_top >= B_bottom:
-    return 0
+  Output:
+  A dictionay that maps the current frame's instance indexes to 
+  the unique instance IDs that identify individual objects
+  """
 
-  Overlap_left = max(A_left, B_left)
-  Overlap_right = min(A_right, B_right)
-  Overlap_top = max(A_top, B_top)
-  Overlap_bottom = min(A_bottom, B_bottom)
-  
-  Overlap_A_map = tuplePolygonA[4][(Overlap_top-A_top):(min(A_bottom,Overlap_bottom)-A_top+1),
-                  (Overlap_left-A_left):(min(A_right,Overlap_right)-A_left+1)]
-  Overlap_B_map = tuplePolygonB[4][(Overlap_top-B_top):(min(B_bottom,Overlap_bottom)-B_top+1),
-                  (Overlap_left-B_left):(min(B_right,Overlap_right)-B_left+1)]
-  Overlap_map_boolean = np.logical_and(Overlap_A_map, Overlap_B_map)
+  def __init__(self):
+    self.instance_id_manager = 0
+    self.dict_instance_history = {}
+    self.instance_memory_length = 2
+    self.frame_number = 0  # the current frame number
 
-  Overlap_count = np.count_nonzero(Overlap_map_boolean)
-  Union_count = tuplePolygonA[5] + tuplePolygonB[5] - Overlap_count
-
-  return Overlap_count/Union_count
-
-def get_iou_score(item):
-  return item[2]
-
-def generate_masked_image(image, boxes, masks, class_ids, class_names,
-                      scores=None, title="",
-                      figsize=(16, 16), ax=None,
-                      show_mask=True, show_bbox=True,
-                      colors=None, captions=None):
+  def fill_polygons_in_bounding_map(self, poly_vertices):
     """
-    boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
-    masks: [height, width, num_instances]
-    class_ids: [num_instances]
-    class_names: list of class names of the dataset
-    scores: (optional) confidence scores for each box
-    title: (optional) Figure title
-    show_mask, show_bbox: To show masks and bounding boxes or not
-    figsize: (optional) the size of the image
-    colors: (optional) An array or colors to use with each object
-    captions: (optional) A list of strings to use as captions for each object
+    Given one or multiple ploygons rach consisting of a sequence of vertices, 
+    determine a box or map that encloses them. Then fill the polygon(s) within
+    the map and calculate its area.
+    Input: 
+    - poly_vertices: A list of polygons. Each item is a list of points [x,y]
     """
+    left = 10000 # sufficiently large coordinate in x
+    right = 0    # the minimum possible coordinate in x
+    top = 10000  # sufficiently large coordinate in y
+    bottom = 0   # the minimum possible coordinate in y
+    # polyVertices: a list of N-by-2 arrays
+    for poly in poly_vertices:
+      left = min(left, np.amin(poly[:,0]))
+      right = max(right, np.amax(poly[:,0]))
+      top = min(top, np.amin(poly[:,1]))
+      bottom = max(bottom, np.amax(poly[:,1]))
+    pts = []
+    for poly in poly_vertices:
+      pts.append(poly-np.array([left,top]))
+    # This map is a 2-D array
+    map = np.zeros((bottom-top+1, right-left+1),dtype=np.uint8)
+    # mask the area
+    cv2.fillPoly(map, pts, color=(255))
+    polyArea = np.count_nonzero(map)
+    return (left, top, right, bottom, map, polyArea, self.frame_number)
 
-    global instance_id_manager
-    global dict_instance_history
+  def compute_intersection_polygons(self, tuplePolygonA, tuplePolygonB):
+    """
+    Calculate intersection between two regions each outlined by one 
+    or multiple polygons. 
+    Inputs:
+    - tuplePolygonA, tuplePolygonB: A tuple to represent a region outlined 
+    by one or multiple polygons. See the output of method 
+    "fill_polygons_in_bounding_map".
+    Return: Intersection over Union (IoU) in the range from 0 to 1.0
+    """
+    # tuplePolygonA and tuplePolygonB
+    # (xmin, ymin, xmax, ymax, filledPolygon2Dmap, frame_number)
+    A_left = tuplePolygonA[0]
+    A_right = tuplePolygonA[2]
+    A_top = tuplePolygonA[1]
+    A_bottom = tuplePolygonA[3]
+    B_left = tuplePolygonB[0]
+    B_right = tuplePolygonB[2]
+    B_top = tuplePolygonB[1]
+    B_bottom = tuplePolygonB[3]
+    # check if the two maps intersect
+    if B_left >= A_right or B_top >= A_bottom:
+      return 0
+    if A_left >= B_right or A_top >= B_bottom:
+      return 0
+    # calculate the overlapping part of the two bounding maps
+    Overlap_left = max(A_left, B_left)
+    Overlap_right = min(A_right, B_right)
+    Overlap_top = max(A_top, B_top)
+    Overlap_bottom = min(A_bottom, B_bottom)
+    # get the overlapping part within the two maps respectively
+    Overlap_A_map = tuplePolygonA[4][(Overlap_top-A_top):(min(A_bottom,Overlap_bottom)-A_top+1),
+                    (Overlap_left-A_left):(min(A_right,Overlap_right)-A_left+1)]
+    Overlap_B_map = tuplePolygonB[4][(Overlap_top-B_top):(min(B_bottom,Overlap_bottom)-B_top+1),
+                    (Overlap_left-B_left):(min(B_right,Overlap_right)-B_left+1)]
+    # calculate the intersection between the two silhouettes within the overlapping part
+    Overlap_map_boolean = np.logical_and(Overlap_A_map, Overlap_B_map)
+    # calculate the area of silhouette intersection
+    Overlap_count = np.count_nonzero(Overlap_map_boolean)
+    Union_count = tuplePolygonA[5] + tuplePolygonB[5] - Overlap_count
+    return Overlap_count/Union_count
+
+  def update_buffers(self):
+    # Update the buffers (dictionaries) for the past detection results
+    uid_list = list(self.dict_instance_history.keys())
+    for uid in uid_list:
+      if len(self.dict_instance_history[uid]) > self.instance_memory_length:
+        self.dict_instance_history[uid].pop(0) # discard the oldest one
+      while (len(self.dict_instance_history[uid]) > 0):
+        if (self.frame_number - self.dict_instance_history[uid][0][6]) > 200000000: # discard stale frames
+          self.dict_instance_history[uid].pop(0)
+        else:
+          break
+    uid_list = list(self.dict_instance_history.keys())
+    for uid in uid_list:
+      if len(self.dict_instance_history[uid]) == 0:
+        self.dict_instance_history.pop(uid)
+
+  def receive_segmentation_output(self, results, class_names):
+    """
+    Update tracker states upon new detection results
+    Input: 
+    - results: segmentation results as output of Mask R-CNN 
+    Output:
+    - Tuple: 
+      item 0: the current instance ID to assigned unique ID (dict)
+      item 1: Contours for current instances (dict)
+    """
+    boxes = results['rois']
+    masks = results['masks']
+    class_ids = results['class_ids']
 
     # Number of instances
     N = boxes.shape[0]
     if not N:
-        return image
+        return None
     else:
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
-
-    # Update the dictionary of past detection results
-    uid_list = list(dict_instance_history.keys())
-    for uid in uid_list:
-      if len(dict_instance_history[uid]) > instance_memory_length:
-        dict_instance_history[uid].pop(0) # discard the oldest one
-      while (len(dict_instance_history[uid]) > 0):
-        if (time.time() - dict_instance_history[uid][0][6]) > 10.0: # discard stale frames
-          dict_instance_history[uid].pop(0)
-        else:
-          break
-    uid_list = list(dict_instance_history.keys())
-    for uid in uid_list:
-      if len(dict_instance_history[uid]) == 0:
-        dict_instance_history.pop(uid)
+    
+    # increment the frame counter
+    self.frame_number += 1
+    
+    # pop up the old data if necessary
+    self.update_buffers()
 
     # Find the instances of interest, e.g., persons
     instances_of_interest = []
@@ -255,14 +284,88 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       pts2d = []  # each element is an array of the shape (-1,2)
       for c in dict_contours[i]: # the value is a list
         pts2d.append(c.astype(np.int32))
-      dict_polygons_in_bounding_map[i] = fillPolygonInBoundingMap(pts2d)
+      dict_polygons_in_bounding_map[i] = self.fill_polygons_in_bounding_map(pts2d)
 
-    # Initialize the buffer for the past detection results
-    if instance_id_manager == 0:
+    # Initialize the buffers for the past detection results
+    if self.instance_id_manager == 0:
       for i in dict_polygons_in_bounding_map:
-        instance_id_manager += 1
-        uid = instance_id_manager
-        dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+        self.instance_id_manager += 1
+        uid = self.instance_id_manager
+        self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+
+    # Matching existing instances with the instances in the current frame
+    dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
+    list_matching_scores = []
+    for i in dict_polygons_in_bounding_map:
+      uid_matching = 0 # invalid ID
+      max_iou = 0.0 # how much does it match the existing detected instances
+      # here "uid" is a unique ID assigned to each detected instance
+      for uid in self.dict_instance_history:
+        for contour_map in reversed(self.dict_instance_history[uid]):
+          iou = self.compute_intersection_polygons(dict_polygons_in_bounding_map[i], contour_map)
+          if iou > max_iou:
+            max_iou = iou
+            uid_matching = uid
+      if max_iou > 0:
+        list_matching_scores.append((i, uid_matching, max_iou))
+    list_matching_scores.sort(key=lambda item: item[2], reverse=True) # in decending order 
+    uid_set = set(self.dict_instance_history.keys())
+    for e in list_matching_scores: # e is a tuple
+      i = e[0] # the instance ID in the current frame
+      uid = e[1]  # unique existing instance ID
+      iou_score = e[2]
+      if iou_score > 0.25 and uid in uid_set:
+        uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
+        dict_inst_index_to_uid[i] = uid
+        self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+    # What if the instances do not relate to any of the existing identified instances ? 
+    for i in dict_polygons_in_bounding_map:
+      if i not in dict_inst_index_to_uid: # this would be a new instance
+        self.instance_id_manager += 1
+        uid = self.instance_id_manager
+        self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+        dict_inst_index_to_uid[i] = uid
+    # calculate the center of the box that encloses a instance's contour
+    dict_box_center = {}
+    for i in dict_polygons_in_bounding_map:
+      cy = (dict_polygons_in_bounding_map[i][0] + dict_polygons_in_bounding_map[i][2])//2
+      cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
+      dict_box_center[i] = (cx, cy)
+
+    return (dict_inst_index_to_uid, dict_contours, dict_box_center)
+
+
+def generate_masked_image(image, boxes, masks, class_ids, class_names,
+                      scores=None, title="",
+                      figsize=(16, 16), ax=None,
+                      show_mask=True, show_bbox=True,
+                      colors=None, captions=None, tracking=None):
+    """
+    boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
+    masks: [height, width, num_instances]
+    class_ids: [num_instances]
+    class_names: list of class names of the dataset
+    scores: (optional) confidence scores for each box
+    title: (optional) Figure title
+    show_mask, show_bbox: To show masks and bounding boxes or not
+    figsize: (optional) the size of the image
+    colors: (optional) An array or colors to use with each object
+    captions: (optional) A list of strings to use as captions for each object
+    """
+
+    # Number of instances
+    N = boxes.shape[0]
+    if not N:
+        return image
+    else:
+        assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
+
+    # Find the instances of interest, e.g., persons
+    instances_of_interest = []
+    for i in range(N):
+      class_id = class_ids[i]
+      if class_id == class_names.index('person'):
+        instances_of_interest.append(i)
 
     # Generate random colors
     diff_colors_person = False
@@ -270,41 +373,11 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       diff_colors_person = True
     colors = colors or visualize.random_colors(N)
 
-    # Find the color of each detected instance
+    # Determine the color of each detected instance
     dict_colors = {}
-    dict_inst_index_to_uid = {} # current frame's instance index to unique ID
-    list_matching_scores = []
-    for i in dict_polygons_in_bounding_map:
-      uid_matching = 0 # invalid ID
-      max_iou = 0.0 # how much does it to match the existing detected instances
-      # here "uid" is a unique ID assigned to each detected instance
-      for uid in dict_instance_history:
-        for contour_map in reversed(dict_instance_history[uid]):
-          iou = computeIntersectionPolygons(dict_polygons_in_bounding_map[i], contour_map)
-          if iou > max_iou:
-            max_iou = iou
-            uid_matching = uid
-      if max_iou > 0:
-        list_matching_scores.append((i, uid_matching, max_iou))
-    list_matching_scores.sort(key=get_iou_score, reverse=True) # in decending order 
-    uid_set = set(dict_instance_history.keys())
-    for e in list_matching_scores: # e is a tuple
-      i = e[0] # the instance ID in the current frame
-      uid = e[1]  # unique existing instance ID
-      iou_score = e[2]
-      if iou_score > 0.25 and uid in uid_set:
-        uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
-        dict_colors[i] = colors[uid%len(colors)]
-        dict_inst_index_to_uid[i] = uid
-        dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
-    # What if the instances do not relate to any of the existing identified instances ? 
-    for i in dict_polygons_in_bounding_map:
-      if i not in dict_colors: # this would be a new instance
-        instance_id_manager += 1
-        uid = instance_id_manager
-        dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
-        dict_colors[i] = colors[uid%len(colors)]
-        dict_inst_index_to_uid[i] = uid
+    if tracking:
+      for i in tracking[0]:
+        dict_colors[i] = colors[tracking[0][i]%len(colors)]
 
     masked_image = image.astype(np.uint32).copy()
     list_contours = []
@@ -315,7 +388,8 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         else:
           color = colors[class_id%len(colors)]
 
-        color = dict_colors[i]
+        if i in dict_colors:
+          color = dict_colors[i]
 
         # Bounding box
         if not np.any(boxes[i]):
@@ -345,19 +419,16 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         if show_mask:
             masked_image = visualize.apply_mask(masked_image, mask, color)
 
-        # Mask Polygon
-        # Pad to ensure proper polygons for masks that touch image edges.
-        padded_mask = np.zeros(
-            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
-        padded_mask[1:-1, 1:-1] = mask
-        contours = find_contours(padded_mask, 0.5)
-        list_contours.append(contours)
-        #for verts in contours:
-            # Subtract the padding and flip (y, x) to (x, y)
-        #    verts = np.fliplr(verts) - 1
-        #    p = Polygon(verts, facecolor="none", edgecolor=color)
-        #    ax.add_patch(p)
     masked_image_uint8 = masked_image.astype(np.uint8)
+    
+    dict_inst_index_to_uid = {}
+    dict_contours = {}
+    dict_box_center = {}
+    if tracking:
+      dict_inst_index_to_uid = tracking[0]
+      dict_contours = tracking[1]
+      dict_box_center = tracking[2]
+
     for i in dict_contours:
       contours = dict_contours[i]
       # contours is a list
@@ -367,15 +438,13 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
         # switch x with y otherwise the contours will be rotated by 90 degrees
         pts3d.append(c.astype(np.int32).reshape((-1, 1, 2))[:,:,[1,0]])
       cv2.polylines(masked_image_uint8, pts3d, True, (0, 255, 255))
-      cy = (dict_polygons_in_bounding_map[i][0] + dict_polygons_in_bounding_map[i][2])//2
-      cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
+      uid = dict_inst_index_to_uid[i]
+      center = dict_box_center[i]
       font = cv2.FONT_HERSHEY_SIMPLEX
       fontScale = 0.5
       fontColor = (0,255,255)
       lineType = 1
-      uid = dict_inst_index_to_uid[i]
-      cv2.putText(masked_image_uint8, str(uid), (cx, cy), font, fontScale, fontColor, lineType)
-
+      cv2.putText(masked_image_uint8, str(uid), center, font, fontScale, fontColor, lineType)
     return masked_image_uint8
 
 import cv2
@@ -431,6 +500,9 @@ if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
 def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
+
+  tracker = MaskRCNNTracker()
+
   while(True):
     ret, frame = cap.read()
     if ret == False: 
@@ -446,8 +518,9 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
-                   class_names, r['scores'], colors=colors)
+                   class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
  
     # Write the frame into the file 'output.avi'
@@ -465,6 +538,9 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
 def detect_and_send_frames(cap, model, socket):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
+
+  tracker = MaskRCNNTracker()
+
   while(True):
     ret, frame = cap.read()
     if ret == False:
@@ -480,8 +556,9 @@ def detect_and_send_frames(cap, model, socket):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
-                   class_names, r['scores'], colors=colors)
+                   class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
     n_frames += 1
     print("Frame %d" % (n_frames))
