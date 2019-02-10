@@ -242,7 +242,87 @@ class MaskRCNNTracker():
       if (len(self.dict_trajectories[uid]) > 80):
         self.dict_trajectories[uid].pop(0)
 
-  def receive_segmentation_output(self, results, class_names, image_size):
+  def receive_first_segmentation_output(self, results, class_names, image_size):
+    """
+    This method is called when the segmentation results for the very first frame received
+    Input: 
+    - results: segmentation results as output of Mask R-CNN 
+    - class_names: list of class names of the dataset
+    - image_size: image size in format (x, y)
+    Output:
+    - Tuple: 
+      item 0: the current instance ID to assigned unique ID (dict)
+      item 1: Contours for current instances (dict)
+    """
+    boxes = results['rois']
+    masks = results['masks']
+    class_ids = results['class_ids']
+
+    self.image_size = image_size
+
+    # Number of instances
+    N = boxes.shape[0]
+    if not N:
+        return None
+    else:
+        assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
+    
+    # increment the frame counter
+    self.frame_number = 1
+
+    # Find the instances of interest, e.g., persons
+    instances_of_interest = []
+    for i in range(N):
+      class_id = class_ids[i]
+      if class_id == class_names.index('person'):
+        instances_of_interest.append(i)
+
+    # Find the contours that cover detected instances
+    dict_contours = {}
+    for i in instances_of_interest:
+      # Mask
+      mask = masks[:, :, i]
+      # Mask Polygon
+      # Pad to ensure proper polygons for masks that touch image edges.
+      padded_mask = np.zeros(
+            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+      padded_mask[1:-1, 1:-1] = mask
+      dict_contours[i] = find_contours(padded_mask, 0.5)
+    
+    # Analyze the contours and calculate the areas
+    dict_polygons_in_bounding_map = {}
+    for i in dict_contours:
+      pts2d = []  # each element is an array of the shape (-1,2)
+      for c in dict_contours[i]: # the value is a list
+        pts2d.append(c.astype(np.int32))
+      dict_polygons_in_bounding_map[i] = self.fill_polygons_in_bounding_map(pts2d)
+
+    # Initialize the buffers
+    dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
+    assert self.instance_id_manager == 0
+    for i in dict_polygons_in_bounding_map:
+      self.instance_id_manager += 1
+      uid = self.instance_id_manager
+      dict_inst_index_to_uid[i] = uid
+      self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+      y1, x1, y2, x2 = boxes[i]
+      self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
+
+    # calculate the center of the box that encloses a instance's contour
+    dict_box_center = {}
+    for i in dict_polygons_in_bounding_map:
+      cy = (dict_polygons_in_bounding_map[i][0] + dict_polygons_in_bounding_map[i][2])//2
+      cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
+      dict_box_center[i] = (cx, cy)
+
+    # predict the locations of indentified instances in the next frame
+    self.dict_location_prediction = {}
+    for uid in self.dict_trajectories:
+      self.dict_location_prediction[uid] = self.predict_location(uid)
+
+    return (dict_inst_index_to_uid, dict_contours, dict_box_center)
+
+  def receive_subsequent_segmentation_output(self, results, class_names, image_size):
     """
     Update tracker states upon new detection results
     Input: 
@@ -334,17 +414,13 @@ class MaskRCNNTracker():
         uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
         dict_inst_index_to_uid[i] = uid
         self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
-        y1, x1, y2, x2 = boxes[i]
-        self.dict_trajectories[uid].append([self.frame_number, (x1 + x2)//2, (y1 + y2)//2])
 
-    # What if the instances do not relate to any of the existing identified instances ? 
+    # What if the instances do not match any of the existing identified instances ? 
     for i in dict_polygons_in_bounding_map:
       if i not in dict_inst_index_to_uid: # this would be a new instance
         self.instance_id_manager += 1
         uid = self.instance_id_manager
         self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
-        y1, x1, y2, x2 = boxes[i]
-        self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
         dict_inst_index_to_uid[i] = uid
     # calculate the center of the box that encloses a instance's contour
     dict_box_center = {}
@@ -353,12 +429,41 @@ class MaskRCNNTracker():
       cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
       dict_box_center[i] = (cx, cy)
     
+    for i in dict_inst_index_to_uid:
+      y1, x1, y2, x2 = boxes[i]
+      uid = dict_inst_index_to_uid[i]
+      if uid not in self.dict_trajectories:
+        self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
+      else:
+        self.dict_trajectories[uid].append([self.frame_number, (x1 + x2)//2, (y1 + y2)//2])
+
     # predict the locations of indentified instances in the next frame
-    self.dict_velocity = {}
+    self.dict_location_prediction = {}
     for uid in self.dict_trajectories:
       self.dict_location_prediction[uid] = self.predict_location(uid)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
+
+
+
+  def receive_segmentation_output(self, results, class_names, image_size):
+    """
+    Update tracker states upon new detection results
+    Input: 
+    - results: segmentation results as output of Mask R-CNN 
+    - class_names: list of class names of the dataset
+    - image_size: image size in format (x, y)
+    Output:
+    - Tuple: 
+      item 0: the current instance ID to assigned unique ID (dict)
+      item 1: Contours for current instances (dict)
+    """
+
+    if self.instance_id_manager == 0:
+      return self.receive_first_segmentation_output(results, class_names, image_size)
+    else:
+      return self.receive_subsequent_segmentation_output(results, class_names, image_size)
+
 
   def save_trajectory_to_textfile(self, uid, fname):
     """
