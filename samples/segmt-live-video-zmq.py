@@ -143,8 +143,11 @@ class MaskRCNNTracker():
   def __init__(self):
     self.instance_id_manager = 0
     self.dict_instance_history = {}
+    self.dict_trajectories = {}
     self.instance_memory_length = 2
     self.frame_number = 0  # the current frame number
+    self.image_size = None # the image size (x, y) of the current frame
+    self.dict_location_prediction = {}
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
     """
@@ -223,7 +226,7 @@ class MaskRCNNTracker():
       if len(self.dict_instance_history[uid]) > self.instance_memory_length:
         self.dict_instance_history[uid].pop(0) # discard the oldest one
       while (len(self.dict_instance_history[uid]) > 0):
-        if (self.frame_number - self.dict_instance_history[uid][0][6]) > 200000000: # discard stale frames
+        if (self.frame_number - self.dict_instance_history[uid][0][6]) > 20: # discard stale frames
           self.dict_instance_history[uid].pop(0)
         else:
           break
@@ -231,12 +234,21 @@ class MaskRCNNTracker():
     for uid in uid_list:
       if len(self.dict_instance_history[uid]) == 0:
         self.dict_instance_history.pop(uid)
+        if uid in self.dict_trajectories:
+          #self.save_trajectory_to_textfile(uid, "location")
+          self.dict_trajectories.pop(uid)
 
-  def receive_segmentation_output(self, results, class_names):
+    for uid in self.dict_trajectories:
+      if (len(self.dict_trajectories[uid]) > 80):
+        self.dict_trajectories[uid].pop(0)
+
+  def receive_segmentation_output(self, results, class_names, image_size):
     """
     Update tracker states upon new detection results
     Input: 
     - results: segmentation results as output of Mask R-CNN 
+    - class_names: list of class names of the dataset
+    - image_size: image size in format (x, y)
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
@@ -245,6 +257,8 @@ class MaskRCNNTracker():
     boxes = results['rois']
     masks = results['masks']
     class_ids = results['class_ids']
+
+    self.image_size = image_size
 
     # Number of instances
     N = boxes.shape[0]
@@ -292,6 +306,8 @@ class MaskRCNNTracker():
         self.instance_id_manager += 1
         uid = self.instance_id_manager
         self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+        y1, x1, y2, x2 = boxes[i]
+        self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
 
     # Coorespondence between existing instances and the instances in the current frame
     dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
@@ -318,12 +334,17 @@ class MaskRCNNTracker():
         uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
         dict_inst_index_to_uid[i] = uid
         self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+        y1, x1, y2, x2 = boxes[i]
+        self.dict_trajectories[uid].append([self.frame_number, (x1 + x2)//2, (y1 + y2)//2])
+
     # What if the instances do not relate to any of the existing identified instances ? 
     for i in dict_polygons_in_bounding_map:
       if i not in dict_inst_index_to_uid: # this would be a new instance
         self.instance_id_manager += 1
         uid = self.instance_id_manager
         self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
+        y1, x1, y2, x2 = boxes[i]
+        self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
         dict_inst_index_to_uid[i] = uid
     # calculate the center of the box that encloses a instance's contour
     dict_box_center = {}
@@ -331,8 +352,57 @@ class MaskRCNNTracker():
       cy = (dict_polygons_in_bounding_map[i][0] + dict_polygons_in_bounding_map[i][2])//2
       cx = (dict_polygons_in_bounding_map[i][1] + dict_polygons_in_bounding_map[i][3])//2
       dict_box_center[i] = (cx, cy)
+    
+    # predict the locations of indentified instances in the next frame
+    self.dict_velocity = {}
+    for uid in self.dict_trajectories:
+      self.dict_location_prediction[uid] = self.predict_location(uid)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
+
+  def save_trajectory_to_textfile(self, uid, fname):
+    """
+    Dump a specified instance's location trajectory to a text file
+    Input:
+    - uid: Unique instance ID
+    - fname: out filename
+    """
+    if uid in self.dict_trajectories:
+      outfile = open(str(fname) + "_%04d"%(uid) + ".txt", "w")
+      for u in self.dict_trajectories[uid]:
+        outfile.write(str(u[0])+"\t"+str(u[1])+"\t"+str(u[2])+"\n")
+      outfile.close()
+
+  def estimate_velocity(self, uid):
+    """
+    Return estimated velocity
+    """
+    if uid not in self.dict_trajectories:
+      return None
+    pos = np.array(self.dict_trajectories[uid])
+    m = pos.shape[0] # the number of points (memory for the past images)
+    if m < 2: # single point
+      return (0, 0)
+    # partition the set of points
+    x0, y0 = pos[0:m//2, 1].mean(), pos[0:m//2, 2].mean()
+    x1, y1 = pos[m//2:, 1].mean(), pos[m//2:, 2].mean()
+    timespan = np.amax([1.0, (pos[-1, 0] - pos[0, 0])/2])
+    return (round((x1 - x0)/timespan), round((y1 - y0)/timespan))  # unit: pixels per frame
+    
+  def predict_location(self, uid):
+    """
+    Predict the location (x, y) of specified instance in the next frame
+    """
+    if uid not in self.dict_trajectories:
+      return None
+    _, x, y = self.dict_trajectories[uid][-1] # the latest (last) item
+    v = self.estimate_velocity(uid)
+    x_t = min([max([0, x + v[0]]), self.image_size[0]])
+    y_t = min([max([0, y + v[1]]), self.image_size[1]])
+    #print("uid", uid, "Velocity", v,"prediction: ","x", x, "->", x_t, "y", y, "->", y_t)
+    return (x_t, y_t)
+    
+
 
 
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
@@ -518,7 +588,8 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
-    tracking_predictions = tracker.receive_segmentation_output(r, class_names)
+    image_size = (frame.shape[1], frame.shape[0])
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names, image_size)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
@@ -556,7 +627,8 @@ def detect_and_send_frames(cap, model, socket):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
-    tracking_predictions = tracker.receive_segmentation_output(r, class_names)
+    image_size = (frame.shape[1], frame.shape[0])
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names, image_size)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
