@@ -257,6 +257,7 @@ class MaskRCNNTracker():
     boxes = results['rois']
     masks = results['masks']
     class_ids = results['class_ids']
+    scores = results['scores']
 
     self.image_size = image_size
 
@@ -274,7 +275,7 @@ class MaskRCNNTracker():
     instances_of_interest = []
     for i in range(N):
       class_id = class_ids[i]
-      if class_id == class_names.index('person'):
+      if class_id == class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
 
     # Find the contours that cover detected instances
@@ -337,6 +338,7 @@ class MaskRCNNTracker():
     boxes = results['rois']
     masks = results['masks']
     class_ids = results['class_ids']
+    scores = results['scores']
 
     self.image_size = image_size
 
@@ -357,7 +359,7 @@ class MaskRCNNTracker():
     instances_of_interest = []
     for i in range(N):
       class_id = class_ids[i]
-      if class_id == class_names.index('person'):
+      if class_id == class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
 
     # Find the contours that cover detected instances
