@@ -148,6 +148,10 @@ class MaskRCNNTracker():
     self.frame_number = 0  # the current frame number
     self.image_size = None # the image size (x, y) of the current frame
     self.dict_location_prediction = {}
+    self.dict_appearance_prediction = {}
+    # store each instance's states. 
+    # For example, "suspended" 
+    self.dict_instance_states = {}
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
     """
@@ -237,6 +241,12 @@ class MaskRCNNTracker():
         if uid in self.dict_trajectories:
           #self.save_trajectory_to_textfile(uid, "location")
           self.dict_trajectories.pop(uid)
+        if uid in self.dict_location_prediction:
+          self.dict_location_prediction.pop(uid)
+        if uid in self.dict_instance_states:
+          self.dict_instance_states.pop(uid)    
+        if uid in self.dict_appearance_prediction:
+          self.dict_appearance_prediction.pop(uid)
 
     for uid in self.dict_trajectories:
       if (len(self.dict_trajectories[uid]) > 80):
@@ -382,15 +392,6 @@ class MaskRCNNTracker():
         pts2d.append(c.astype(np.int32))
       dict_polygons_in_bounding_map[i] = self.fill_polygons_in_bounding_map(pts2d)
 
-    # Initialize the buffers for the past detection results
-    if self.instance_id_manager == 0:
-      for i in dict_polygons_in_bounding_map:
-        self.instance_id_manager += 1
-        uid = self.instance_id_manager
-        self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
-        y1, x1, y2, x2 = boxes[i]
-        self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
-
     # Coorespondence between existing instances and the instances in the current frame
     dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
     list_matching_scores = []
@@ -440,7 +441,6 @@ class MaskRCNNTracker():
         self.dict_trajectories[uid].append([self.frame_number, (x1 + x2)//2, (y1 + y2)//2])
 
     # predict the locations of indentified instances in the next frame
-    self.dict_location_prediction = {}
     for uid in self.dict_trajectories:
       self.dict_location_prediction[uid] = self.predict_location(uid)
 
@@ -502,12 +502,22 @@ class MaskRCNNTracker():
     """
     if uid not in self.dict_trajectories:
       return None
-    _, x, y = self.dict_trajectories[uid][-1] # the latest (last) item
+
+    assert uid in self.dict_instance_history
+    dx = dy = 0  # displacement relative to the last true location
+    if self.dict_instance_history[uid][-1][6] == self.frame_number:
+      _, x, y = self.dict_trajectories[uid][-1] # the latest (last) item
+    else:
+      assert uid in self.dict_location_prediction
+      x, y, dx, dy = self.dict_location_prediction[uid] # based on the prediction for the last frame
     v = self.estimate_velocity(uid)
     x_t = min([max([0, x + v[0]]), self.image_size[0]])
     y_t = min([max([0, y + v[1]]), self.image_size[1]])
-    #print("uid", uid, "Velocity", v,"prediction: ","x", x, "->", x_t, "y", y, "->", y_t)
-    return (x_t, y_t)
+    dx += v[0]  # accumulated displacement in x taking into account frames where trajectory not updated
+    dy += v[1]  # accumulated displacement in y taking into account frames where trajectory not updated
+  
+    #print("uid", uid, "Velocity", v,"prediction: ","x", x, "->", x_t, "y", y, "->", y_t, "dx", dx, "dy", dy)
+    return (x_t, y_t, dx, dy)
     
 
 
