@@ -152,6 +152,10 @@ class MaskRCNNTracker():
     # store each instance's states. 
     # For example, "suspended" 
     self.dict_instance_states = {}
+    # the inner area conssist of the inner grids not touching any sides
+    self.N_divide_width = 8  # the number of grids along x
+    self.N_divide_height = 4 # the number of grids along y
+    self.left_top_right_bottom = None # A rectangle for inner frame 
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
     """
@@ -270,6 +274,7 @@ class MaskRCNNTracker():
     scores = results['scores']
 
     self.image_size = image_size
+    self.update_inner_frame_area()
 
     # Number of instances
     N = boxes.shape[0]
@@ -353,6 +358,7 @@ class MaskRCNNTracker():
     scores = results['scores']
 
     self.image_size = image_size
+    self.update_inner_frame_area()
 
     # Number of instances
     N = boxes.shape[0]
@@ -402,11 +408,11 @@ class MaskRCNNTracker():
       max_iou = 0.0 # how much does it match the existing detected instances
       # here "uid" is a unique ID assigned to each detected instance
       for uid in self.dict_instance_history:
-        for contour_map in reversed(self.dict_instance_history[uid]):
-          iou = self.compute_intersection_polygons(dict_polygons_in_bounding_map[i], contour_map)
-          if iou > max_iou:
-            max_iou = iou
-            uid_matching = uid
+        contour_map = self.get_instance_appearance(uid)
+        iou = self.compute_intersection_polygons(dict_polygons_in_bounding_map[i], contour_map)
+        if iou > max_iou:
+          max_iou = iou
+          uid_matching = uid
       if max_iou > 0:
         list_matching_scores.append((i, uid_matching, max_iou))
     list_matching_scores.sort(key=lambda item: item[2], reverse=True) # in decending order 
@@ -421,6 +427,16 @@ class MaskRCNNTracker():
         self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
 
     # What if the instances do not match any of the existing identified instances ? 
+    # The instances that appear suddenly within the inner area of frame may be false positives
+    id_list = list(dict_polygons_in_bounding_map.keys())
+    for i in id_list:
+      if i not in dict_inst_index_to_uid:
+        y1, x1, y2, x2 = boxes[i]
+        if self.is_within_inner_area((x1 + x2)//2, (y1 + y2)//2): # possibly a false positive
+          dict_polygons_in_bounding_map.pop(i)
+          dict_contours.pop(i)
+          instances_of_interest.remove(i)
+    # Now assign unique IDs to new instances
     for i in dict_polygons_in_bounding_map:
       if i not in dict_inst_index_to_uid: # this would be a new instance
         self.instance_id_manager += 1
@@ -447,6 +463,8 @@ class MaskRCNNTracker():
       self.dict_location_prediction[uid] = self.predict_location(uid)
       dx, dy = self.dict_location_prediction[uid][2:4]
       self.dict_appearance_prediction[uid] = self.shift_instance_appearance(uid, dx, dy)
+
+    self.predict_occlusion(0.4)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
@@ -534,11 +552,12 @@ class MaskRCNNTracker():
     if uid not in self.dict_instance_history:
       return None
     last_profile = self.dict_instance_history[uid][-1]
-    dx, dy = int(dx), int(dy)
-    left = min([max([0, last_profile[0] + dx]), self.image_size[0]])
-    right = min([max([0, last_profile[2] + dx]), self.image_size[0]])
-    top = min([max([0, last_profile[1] + dy]), self.image_size[1]])
-    bottom = min([max([0, last_profile[3] + dy]), self.image_size[1]])
+    # sigh! because polygons rotated by 90 degrees, we have to switch x and y
+    dy, dx = int(dx), int(dy)
+    left = min([max([0, last_profile[0] + dx]), self.image_size[1]])
+    right = min([max([0, last_profile[2] + dx]), self.image_size[1]])
+    top = min([max([0, last_profile[1] + dy]), self.image_size[0]])
+    bottom = min([max([0, last_profile[3] + dy]), self.image_size[0]])
 
     return (left, top, right, bottom, last_profile[4], last_profile[5], self.frame_number)
 
@@ -546,11 +565,64 @@ class MaskRCNNTracker():
     """
     Return instance's last appearance
     """
-    if uid in self.dict_instance_history:
+   
+    if uid in self.dict_appearance_prediction:
+      return self.dict_appearance_prediction[uid]
+    elif uid in self.dict_instance_history:
       return self.dict_instance_history[uid][-1]
     else:
       return None
 
+  def predict_occlusion(self, iou_thresh):
+    """
+    Based on the predicted instance appearances for the next frame, group the instances
+    that may be overlapping partially or completely in the next frame
+    Output: A list of tuples each of which is a group of instances to be overlapping
+    """
+    output_list = []
+    uid_list = list(self.dict_appearance_prediction.keys())
+    num = len(uid_list)
+    for k in range(num):
+      uid1 = uid_list[k]
+      glist = [uid1]
+      for l in range(k + 1, num):
+        uid2 = uid_list[l]
+        iou = self.compute_intersection_polygons(self.dict_appearance_prediction[uid1], self.dict_appearance_prediction[uid2])
+        if iou > iou_thresh:
+          glist.append(uid2)
+      if len(glist) > 1:
+        output_list.append(tuple(glist))
+
+    return output_list 
+
+  def update_inner_frame_area(self):
+    """
+    Given the frame size (i.e., self.image_size), determine the inner area of the frame
+    """
+    left = self.image_size[0]//self.N_divide_width
+    right = (self.N_divide_width - 1) * self.image_size[0]//self.N_divide_width
+    top = self.image_size[1]//self.N_divide_height
+    bottom = (self.N_divide_height - 1) * self.image_size[1]//self.N_divide_height
+    self.left_top_right_bottom = (left, top, right, bottom)
+
+  def is_within_inner_area(self, x, y, leftside=True, rightside=True,topside=False, bottomside=True):
+    """
+    Given the location of an object, check if it is in the inner of the frame
+    Inputs:
+    - x, y: coordinates of location
+    - leftside, rightside, topside, bottomside: if False, objects never get into or out of the frame 
+    the frame across the side
+    """
+    if leftside and x < self.left_top_right_bottom[0]:
+      return False
+    if rightside and x > self.left_top_right_bottom[2]:
+      return False
+    if topside and y < self.left_top_right_bottom[1]:
+      return False
+    if bottomside and y > self.left_top_right_bottom[3]:
+      return False
+    
+    return True
 
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
