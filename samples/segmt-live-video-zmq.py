@@ -330,6 +330,8 @@ class MaskRCNNTracker():
     self.dict_location_prediction = {}
     for uid in self.dict_trajectories:
       self.dict_location_prediction[uid] = self.predict_location(uid)
+      dx, dy = self.dict_location_prediction[uid][2:4]
+      self.dict_appearance_prediction[uid] = self.shift_instance_appearance(uid, dx, dy)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
@@ -443,6 +445,8 @@ class MaskRCNNTracker():
     # predict the locations of indentified instances in the next frame
     for uid in self.dict_trajectories:
       self.dict_location_prediction[uid] = self.predict_location(uid)
+      dx, dy = self.dict_location_prediction[uid][2:4]
+      self.dict_appearance_prediction[uid] = self.shift_instance_appearance(uid, dx, dy)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
@@ -519,7 +523,33 @@ class MaskRCNNTracker():
     #print("uid", uid, "Velocity", v,"prediction: ","x", x, "->", x_t, "y", y, "->", y_t, "dx", dx, "dy", dy)
     return (x_t, y_t, dx, dy)
     
+  def shift_instance_appearance(self, uid, dx, dy):
+    """
+    Generate the instance appearance at the predicted location (xpos, ypos) for the next frame.
+    It is just a shift of the last appearance
+    Inputs:
+    - uid Unique ID of instance
+    - dx, dy: location displacement relative to the last trajectory update
+    """
+    if uid not in self.dict_instance_history:
+      return None
+    last_profile = self.dict_instance_history[uid][-1]
+    dx, dy = int(dx), int(dy)
+    left = min([max([0, last_profile[0] + dx]), self.image_size[0]])
+    right = min([max([0, last_profile[2] + dx]), self.image_size[0]])
+    top = min([max([0, last_profile[1] + dy]), self.image_size[1]])
+    bottom = min([max([0, last_profile[3] + dy]), self.image_size[1]])
 
+    return (left, top, right, bottom, last_profile[4], last_profile[5], self.frame_number)
+
+  def get_instance_appearance(self, uid):
+    """
+    Return instance's last appearance
+    """
+    if uid in self.dict_instance_history:
+      return self.dict_instance_history[uid][-1]
+    else:
+      return None
 
 
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
