@@ -471,9 +471,8 @@ class MaskRCNNTracker():
 
     list_occlusion = self.predict_occlusion(0.4)
     self.dict_instance_states = {}
-    for g in list_occlusion:
-      for uid in g:
-        self.dict_instance_states[uid] = dict(occlusion=True)
+    for uid in list_occlusion:
+      self.dict_instance_states[uid] = dict(occlusion=True)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
@@ -582,25 +581,67 @@ class MaskRCNNTracker():
     else:
       return None
 
-  def predict_occlusion(self, iou_thresh):
+  def compute_occlusion_factor(self, tuplePolygonA, tuplePolygonB):
     """
-    Based on the predicted instance appearances for the next frame, group the instances
-    that may be overlapping partially or completely in the next frame
-    Output: A list of tuples each of which is a group of instances to be overlapping
+    Calculate the occlusion factor of a region which may be partially
+    or totally occluded by another region
+    Inputs:
+    - tuplePolygonA, tuplePolygonB: A tuple to represent a region outlined 
+    by one or multiple polygons. See the output of method 
+    "fill_polygons_in_bounding_map".
+    Return: How much region A is occcluded by region B in the range from 0 to 1.0
+    """
+    # tuplePolygonA and tuplePolygonB
+    # (xmin, ymin, xmax, ymax, filledPolygon2Dmap, frame_number)
+    A_left = tuplePolygonA[0]
+    A_right = tuplePolygonA[2]
+    A_top = tuplePolygonA[1]
+    A_bottom = tuplePolygonA[3]
+    B_left = tuplePolygonB[0]
+    B_right = tuplePolygonB[2]
+    B_top = tuplePolygonB[1]
+    B_bottom = tuplePolygonB[3]
+    # check if the two maps intersect
+    if B_left >= A_right or B_top >= A_bottom:
+      return 0
+    if A_left >= B_right or A_top >= B_bottom:
+      return 0
+    # calculate the overlapping part of the two bounding maps
+    Overlap_left = max(A_left, B_left)
+    Overlap_right = min(A_right, B_right)
+    Overlap_top = max(A_top, B_top)
+    Overlap_bottom = min(A_bottom, B_bottom)
+    # get the overlapping part within the two maps respectively
+    Overlap_A_map = tuplePolygonA[4][(Overlap_top-A_top):(min(A_bottom,Overlap_bottom)-A_top+1),
+                    (Overlap_left-A_left):(min(A_right,Overlap_right)-A_left+1)]
+    Overlap_B_map = tuplePolygonB[4][(Overlap_top-B_top):(min(B_bottom,Overlap_bottom)-B_top+1),
+                    (Overlap_left-B_left):(min(B_right,Overlap_right)-B_left+1)]
+    # calculate the intersection between the two silhouettes within the overlapping part
+    Overlap_map_boolean = np.logical_and(Overlap_A_map, Overlap_B_map)
+    # calculate the area of silhouette intersection
+    Overlap_count = np.count_nonzero(Overlap_map_boolean)
+    assert tuplePolygonA[5] > 0
+    return Overlap_count/tuplePolygonA[5]
+
+  def predict_occlusion(self, occlusion_factor_thresh):
+    """
+    Based on the predicted instance appearances for the next frame, find the existing 
+    instances that will be partially or totally occluded  in the next frame
+    Output: A list of instances to be occluded
     """
     output_list = []
     uid_list = list(self.dict_appearance_prediction.keys())
     num = len(uid_list)
-    for k in range(num):
-      uid1 = uid_list[k]
-      glist = [uid1]
-      for l in range(k + 1, num):
-        uid2 = uid_list[l]
-        iou = self.compute_intersection_polygons(self.dict_appearance_prediction[uid1], self.dict_appearance_prediction[uid2])
-        if iou > iou_thresh:
-          glist.append(uid2)
-      if len(glist) > 1:
-        output_list.append(tuple(glist))
+    for uid1 in uid_list:
+      of_max = 0
+      for uid2 in uid_list:
+        if uid1 == uid2:
+          continue
+        of = self.compute_occlusion_factor(self.dict_appearance_prediction[uid1], self.dict_appearance_prediction[uid2])
+        if of > of_max:
+          of_max = of
+      if of_max > occlusion_factor_thresh:
+        output_list.append(uid1)
 
     return output_list 
 
