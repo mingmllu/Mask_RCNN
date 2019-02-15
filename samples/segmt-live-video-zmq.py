@@ -253,7 +253,7 @@ class MaskRCNNTracker():
           self.dict_appearance_prediction.pop(uid)
 
     for uid in self.dict_trajectories:
-      if (len(self.dict_trajectories[uid]) > 80):
+      if (len(self.dict_trajectories[uid]) > 10):
         self.dict_trajectories[uid].pop(0)
 
   def receive_first_segmentation_output(self, results, class_names, image_size):
@@ -400,9 +400,10 @@ class MaskRCNNTracker():
         pts2d.append(c.astype(np.int32))
       dict_polygons_in_bounding_map[i] = self.fill_polygons_in_bounding_map(pts2d)
 
-    # Coorespondence between existing instances and the instances in the current frame
+    # Correspondence between existing instances and the instances in the current frame
     dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
     list_matching_scores = []
+    dict_inst_occlusion = {}
     for i in dict_polygons_in_bounding_map:
       uid_matching = 0 # invalid ID
       max_iou = 0.0 # how much does it match the existing detected instances
@@ -422,9 +423,12 @@ class MaskRCNNTracker():
       uid = e[1]  # unique existing instance ID
       iou_score = e[2]
       if iou_score > 0.25 and uid in uid_set:
-        uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
-        dict_inst_index_to_uid[i] = uid
-        self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+        if not self.is_occluded_next_frame(uid):
+          uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
+          dict_inst_index_to_uid[i] = uid
+          self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+        else:
+          dict_inst_occlusion[i] = True
 
     # What if the instances do not match any of the existing identified instances ? 
     # The instances that appear suddenly within the inner area of frame may be false positives
@@ -432,7 +436,8 @@ class MaskRCNNTracker():
     for i in id_list:
       if i not in dict_inst_index_to_uid:
         y1, x1, y2, x2 = boxes[i]
-        if self.is_within_inner_area((x1 + x2)//2, (y1 + y2)//2): # possibly a false positive
+        # possibly a false positive or in occlusion
+        if self.is_within_inner_area((x1 + x2)//2, (y1 + y2)//2) or i in dict_inst_occlusion:
           dict_polygons_in_bounding_map.pop(i)
           dict_contours.pop(i)
           instances_of_interest.remove(i)
@@ -464,7 +469,11 @@ class MaskRCNNTracker():
       dx, dy = self.dict_location_prediction[uid][2:4]
       self.dict_appearance_prediction[uid] = self.shift_instance_appearance(uid, dx, dy)
 
-    self.predict_occlusion(0.4)
+    list_occlusion = self.predict_occlusion(0.4)
+    self.dict_instance_states = {}
+    for g in list_occlusion:
+      for uid in g:
+        self.dict_instance_states[uid] = dict(occlusion=True)
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
@@ -594,6 +603,15 @@ class MaskRCNNTracker():
         output_list.append(tuple(glist))
 
     return output_list 
+
+  def is_occluded_next_frame(self, uid):
+    """
+    Will the object be occluded in the next frame ?
+    """
+    if uid in self.dict_instance_states:
+      if self.dict_instance_states[uid]['occlusion']:
+        return True
+    return False
 
   def update_inner_frame_area(self):
     """
