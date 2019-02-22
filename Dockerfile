@@ -24,6 +24,7 @@ WORKDIR /mask_rcnn
 ADD mask_rcnn_coco.h5 .
 ADD mrcnn/ ./mrcnn
 ADD samples/ ./samples
+ADD tracker/ ./tracker
 RUN mkdir videos
 
 #ADD cafe.wmv /tf_worker
