@@ -156,6 +156,7 @@ class MaskRCNNTracker():
     self.N_divide_width = 8  # the number of grids along x
     self.N_divide_height = 4 # the number of grids along y
     self.left_top_right_bottom = None # A rectangle for inner frame 
+    self.dict_hue_histogram = {} # keys: ID assigned to instance under track
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
     """
@@ -256,12 +257,23 @@ class MaskRCNNTracker():
       if (len(self.dict_trajectories[uid]) > 10):
         self.dict_trajectories[uid].pop(0)
 
-  def receive_first_segmentation_output(self, results, class_names):
+    # Remove the records for instances that have already disappeared forever
+    uid_list = list(self.dict_hue_histogram.keys())
+    for uid in uid_list:
+      if not uid in self.dict_trajectories:
+        self.dict_hue_histogram.pop(uid)
+    for uid in self.dict_hue_histogram:
+      if len(self.dict_hue_histogram[uid]) > 2:
+        self.dict_hue_histogram[uid].pop(0) # only keep the most recent histograms
+
+
+  def receive_first_segmentation_output(self, results, class_names, image):
     """
     This method is called when the segmentation results for the very first frame received
     Input: 
     - results: segmentation results as output of Mask R-CNN 
     - class_names: list of class names of the dataset
+    - image: the current image or video frame
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
@@ -289,6 +301,9 @@ class MaskRCNNTracker():
       class_id = class_ids[i]
       if class_id == class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
+
+    # calculate the histograms of color (hue) for each segmented instances
+    dict_histograms_hue = self.calculate_hue_histograms(instances_of_interest, masks, image)
 
     # Find the contours that cover detected instances
     dict_contours = {}
@@ -320,6 +335,7 @@ class MaskRCNNTracker():
       self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
       y1, x1, y2, x2 = boxes[i]
       self.dict_trajectories[uid] = [[self.frame_number, (x1 + x2)//2, (y1 + y2)//2]]
+      self.dict_hue_histogram[uid] = [dict_histograms_hue[i]]
 
     # calculate the center of the box that encloses a instance's contour
     dict_box_center = {}
@@ -337,13 +353,13 @@ class MaskRCNNTracker():
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
-  def receive_subsequent_segmentation_output(self, results, class_names):
+  def receive_subsequent_segmentation_output(self, results, class_names, image):
     """
     Update tracker states upon new detection results
     Input: 
     - results: segmentation results as output of Mask R-CNN 
     - class_names: list of class names of the dataset
-    - image_size: image size in format (x, y)
+    - image: the current image or video frame
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
@@ -374,6 +390,9 @@ class MaskRCNNTracker():
       class_id = class_ids[i]
       if class_id == class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
+
+    # calculate the histograms of color (hue) for each segmented instances
+    dict_histograms_hue = self.calculate_hue_histograms(instances_of_interest, masks, image)
 
     # Find the contours that cover detected instances
     dict_contours = {}
@@ -469,6 +488,13 @@ class MaskRCNNTracker():
     for uid in list_occlusion:
       self.dict_instance_states[uid] = dict(occlusion=True)
 
+    for i in dict_inst_index_to_uid:
+      uid = dict_inst_index_to_uid[i]
+      if uid in self.dict_hue_histogram:
+        self.dict_hue_histogram[uid].append(dict_histograms_hue[i])
+      else:
+        self.dict_hue_histogram[uid] = [dict_histograms_hue[i]]      
+
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
 
@@ -479,7 +505,7 @@ class MaskRCNNTracker():
     Input: 
     - results: segmentation results as output of Mask R-CNN 
     - class_names: list of class names of the dataset
-    - image: the current image
+    - image: the current image or video frame
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
@@ -488,9 +514,9 @@ class MaskRCNNTracker():
     self.image_size = (image.shape[1], image.shape[0])
     self.update_inner_frame_area()
     if self.instance_id_manager == 0:
-      return self.receive_first_segmentation_output(results, class_names)
+      return self.receive_first_segmentation_output(results, class_names, image)
     else:
-      return self.receive_subsequent_segmentation_output(results, class_names)
+      return self.receive_subsequent_segmentation_output(results, class_names, image)
 
 
   def save_trajectory_to_textfile(self, uid, fname):
@@ -678,6 +704,41 @@ class MaskRCNNTracker():
       return False
     
     return True
+
+  def calculate_hue_histograms(self, instance_ids, masks, image):
+    """  
+    Calculate the histogram of hue for each segmented instance
+    instance_ids: a list of instances of interest
+    masks: 3D-array 
+    image: video frame
+    """
+
+    dict_hue_histogram = {}
+    num_bins = 36
+    hue_range = [0,180] # for opencv
+    for i in instance_ids:
+      mask = masks[:, :, i]
+      contour_indexes = np.where(mask == 1)
+      b = image[:,:,0]
+      g = image[:,:,1]
+      r = image[:,:,2]
+      b = b[contour_indexes].reshape(-1,1)
+      g = g[contour_indexes].reshape(-1,1)
+      r = r[contour_indexes].reshape(-1,1)
+      bgr = np.stack((b, g, r), axis=-1)
+      hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+      hist, bins = np.histogram(hsv[:,:,0].ravel(),bins=num_bins, range=hue_range, density=True)
+      dict_hue_histogram[i] = hist * ((hue_range[1] - hue_range[0]) / num_bins)
+    return dict_hue_histogram
+  
+  def calculate_distance_between_histgrams(self, hist1, hist2):
+    """
+    Calculate the distance between two normalized histograms
+    """
+    assert hist1.shape == hist2.shape
+    return np.linalg.norm(hist1 - hist2)
+
+
 
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
