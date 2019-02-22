@@ -327,7 +327,7 @@ class MaskRCNNTracker():
       i = e[0] # the instance ID in the current frame
       uid = e[1]  # unique existing instance ID
       iou_score = e[2]
-      if iou_score > 0.25 and uid in uid_set:
+      if iou_score > 0.05 and uid in uid_set:
         if not self.is_occluded_next_frame(uid):
           uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
           dict_inst_index_to_uid[i] = uid
@@ -368,7 +368,7 @@ class MaskRCNNTracker():
       else:
         self.dict_trajectories[uid].append([self.frame_number, (x1 + x2)//2, (y1 + y2)//2])
 
-    # predict the locations of indentified instances in the next frame
+    # predict the locations of the identified instances in the next frame
     for uid in self.dict_trajectories:
       self.dict_location_prediction[uid] = self.predict_location(uid)
       dx, dy = self.dict_location_prediction[uid][2:4]
@@ -621,7 +621,7 @@ class MaskRCNNTracker():
       dict_hue_histogram[i] = hist * ((hue_range[1] - hue_range[0]) / num_bins)
     return dict_hue_histogram
   
-  def calculate_distance_between_histgrams(self, hist1, hist2):
+  def calculate_distance_between_histograms(self, hist1, hist2):
     """
     Calculate the distance between two normalized histograms
     """
