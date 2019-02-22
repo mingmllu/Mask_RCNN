@@ -150,8 +150,9 @@ class MaskRCNNTracker():
     self.dict_location_prediction = {}
     self.dict_appearance_prediction = {}
     # store each instance's states. 
-    # For example, "suspended" 
+    # For example, "occlusion" 
     self.dict_instance_states = {}
+    self.occlusion_factor_thresh = 0.4 # parameter
     # the inner area conssist of the inner grids not touching any sides
     self.N_divide_width = 8  # the number of grids along x
     self.N_divide_height = 4 # the number of grids along y
@@ -483,7 +484,7 @@ class MaskRCNNTracker():
       dx, dy = self.dict_location_prediction[uid][2:4]
       self.dict_appearance_prediction[uid] = self.shift_instance_appearance(uid, dx, dy)
 
-    list_occlusion = self.predict_occlusion(0.4)
+    list_occlusion = self.predict_occlusion(self.occlusion_factor_thresh)
     self.dict_instance_states = {}
     for uid in list_occlusion:
       self.dict_instance_states[uid] = dict(occlusion=True)
