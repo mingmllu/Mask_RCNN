@@ -256,13 +256,12 @@ class MaskRCNNTracker():
       if (len(self.dict_trajectories[uid]) > 10):
         self.dict_trajectories[uid].pop(0)
 
-  def receive_first_segmentation_output(self, results, class_names, image_size):
+  def receive_first_segmentation_output(self, results, class_names):
     """
     This method is called when the segmentation results for the very first frame received
     Input: 
     - results: segmentation results as output of Mask R-CNN 
     - class_names: list of class names of the dataset
-    - image_size: image size in format (x, y)
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
@@ -273,8 +272,6 @@ class MaskRCNNTracker():
     class_ids = results['class_ids']
     scores = results['scores']
 
-    self.image_size = image_size
-    self.update_inner_frame_area()
 
     # Number of instances
     N = boxes.shape[0]
@@ -340,7 +337,7 @@ class MaskRCNNTracker():
 
     return (dict_inst_index_to_uid, dict_contours, dict_box_center)
 
-  def receive_subsequent_segmentation_output(self, results, class_names, image_size):
+  def receive_subsequent_segmentation_output(self, results, class_names):
     """
     Update tracker states upon new detection results
     Input: 
@@ -357,8 +354,6 @@ class MaskRCNNTracker():
     class_ids = results['class_ids']
     scores = results['scores']
 
-    self.image_size = image_size
-    self.update_inner_frame_area()
 
     # Number of instances
     N = boxes.shape[0]
@@ -478,23 +473,24 @@ class MaskRCNNTracker():
 
 
 
-  def receive_segmentation_output(self, results, class_names, image_size):
+  def receive_segmentation_output(self, results, class_names, image):
     """
     Update tracker states upon new detection results
     Input: 
     - results: segmentation results as output of Mask R-CNN 
     - class_names: list of class names of the dataset
-    - image_size: image size in format (x, y)
+    - image: the current image
     Output:
     - Tuple: 
       item 0: the current instance ID to assigned unique ID (dict)
       item 1: Contours for current instances (dict)
     """
-
+    self.image_size = (image.shape[1], image.shape[0])
+    self.update_inner_frame_area()
     if self.instance_id_manager == 0:
-      return self.receive_first_segmentation_output(results, class_names, image_size)
+      return self.receive_first_segmentation_output(results, class_names)
     else:
-      return self.receive_subsequent_segmentation_output(results, class_names, image_size)
+      return self.receive_subsequent_segmentation_output(results, class_names)
 
 
   def save_trajectory_to_textfile(self, uid, fname):
@@ -866,8 +862,7 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
-    image_size = (frame.shape[1], frame.shape[0])
-    tracking_predictions = tracker.receive_segmentation_output(r, class_names, image_size)
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
@@ -905,8 +900,7 @@ def detect_and_send_frames(cap, model, socket):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
-    image_size = (frame.shape[1], frame.shape[0])
-    tracking_predictions = tracker.receive_segmentation_output(r, class_names, image_size)
+    tracking_predictions = tracker.receive_segmentation_output(r, class_names, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
     print("Rendering %f"%(time.time() - finish_time))
