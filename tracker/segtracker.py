@@ -33,23 +33,14 @@ class MaskRCNNTracker():
                  used to map detected instances to classes
     """
     self.class_names = class_names
-    self.instance_id_manager = 0
-    self.dict_instance_history = {}
-    self.dict_trajectories = {}
     self.instance_memory_length = 2
-    self.frame_number = 0  # the current frame number
     self.image_size = None # the image size (x, y) of the current frame
-    self.dict_location_prediction = {}
-    self.dict_appearance_prediction = {}
-    # store each instance's states. 
-    # For example, "occlusion" 
-    self.dict_instance_states = {}
     self.occlusion_factor_thresh = 0.4 # parameter
     # the inner area conssist of the inner grids not touching any sides
     self.N_divide_width = 8  # the number of grids along x
     self.N_divide_height = 4 # the number of grids along y
     self.left_top_right_bottom = None # A rectangle for inner frame 
-    self.dict_hue_histogram = {} # keys: ID assigned to instance under track
+    self.reset()
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
     """
@@ -120,6 +111,21 @@ class MaskRCNNTracker():
     Overlap_count = np.count_nonzero(Overlap_map_boolean)
     Union_count = tuplePolygonA[5] + tuplePolygonB[5] - Overlap_count
     return Overlap_count/Union_count
+
+  def reset(self):
+    """
+    Reset the tracker: flush all buffers and reset all internal dynamic state variables 
+    """
+    self.instance_id_manager = 0
+    self.dict_instance_history = {}
+    self.dict_trajectories = {}
+    self.frame_number = 0  # the current frame number
+    self.dict_location_prediction = {}
+    self.dict_appearance_prediction = {}
+    # store each instance's states. 
+    # For example, "occlusion" 
+    self.dict_instance_states = {}
+    self.dict_hue_histogram = {} # keys: ID assigned to instance under track
 
   def update_buffers(self):
     # Update the buffers (dictionaries) for the past detection results
@@ -323,17 +329,23 @@ class MaskRCNNTracker():
         list_matching_scores.append((i, uid_matching, max_iou))
     list_matching_scores.sort(key=lambda item: item[2], reverse=True) # in decending order 
     uid_set = set(self.dict_instance_history.keys())
+    # key = instance ID in the current frame
+    # Values of IoU scores used for debugging purpose
+    dict_instance_score_color_mismatch = {} 
     for e in list_matching_scores: # e is a tuple
       i = e[0] # the instance ID in the current frame
       uid = e[1]  # unique existing instance ID
       iou_score = e[2]
       if iou_score > 0.05 and uid in uid_set:
         if not self.is_occluded_next_frame(uid):
-          hue_dissimilarity = self.calculate_distance_between_histograms(dict_histograms_hue[i], self.dict_hue_histogram[uid][-1])
+          hue_dissimilarity = self.calculate_distance_between_histograms(dict_histograms_hue[i], 
+                                   self.dict_hue_histogram[uid][-1])
           if hue_dissimilarity < 0.20:
             uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
             dict_inst_index_to_uid[i] = uid
             self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+          else:
+            dict_instance_score_color_mismatch[i] = iou_score # mismatch probably due to color contamination
         else:
           dict_inst_occlusion[i] = True
 
@@ -344,7 +356,10 @@ class MaskRCNNTracker():
       if i not in dict_inst_index_to_uid:
         y1, x1, y2, x2 = boxes[i]
         # possibly a false positive or in occlusion
-        if self.is_within_inner_area((x1 + x2)//2, (y1 + y2)//2) or i in dict_inst_occlusion:
+        is_within_inner_area = self.is_within_inner_area((x1 + x2)//2, (y1 + y2)//2)
+        is_occluded = i in dict_inst_occlusion
+        is_color_mismatch = i in dict_instance_score_color_mismatch # this may not be a new instance
+        if is_within_inner_area or is_occluded or is_color_mismatch:
           dict_polygons_in_bounding_map.pop(i)
           dict_contours.pop(i)
           instances_of_interest.remove(i)
