@@ -329,9 +329,11 @@ class MaskRCNNTracker():
       iou_score = e[2]
       if iou_score > 0.05 and uid in uid_set:
         if not self.is_occluded_next_frame(uid):
-          uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
-          dict_inst_index_to_uid[i] = uid
-          self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
+          hue_dissimilarity = self.calculate_distance_between_histograms(dict_histograms_hue[i], self.dict_hue_histogram[uid][-1])
+          if hue_dissimilarity < 0.20:
+            uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
+            dict_inst_index_to_uid[i] = uid
+            self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
         else:
           dict_inst_occlusion[i] = True
 
