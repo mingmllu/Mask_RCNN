@@ -291,6 +291,9 @@ import zmq
 SOURCE_IMAGE_RESIZE_FACTOR = None
 if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
   SOURCE_IMAGE_RESIZE_FACTOR = float(os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'))
+SHOW_SEGMENTATION_MASK = os.getenv('SHOW_SEGMENTATION_MASK', True)
+if SHOW_SEGMENTATION_MASK != True:
+  SHOW_SEGMENTATION_MASK = True if SHOW_SEGMENTATION_MASK is not '0' else False
 
 def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
@@ -323,7 +326,8 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
 
     tracking_predictions = tracker.receive_segmentation_output(r, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
-                   class_names, r['scores'], colors=colors, tracking=tracking_predictions)
+                   class_names, r['scores'], colors=colors, tracking=tracking_predictions,
+                   show_mask = SHOW_SEGMENTATION_MASK)
     print("Rendering %f"%(time.time() - finish_time))
  
     # Write the frame into the file 'output.avi'
