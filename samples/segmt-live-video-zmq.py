@@ -295,6 +295,9 @@ if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
 def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
+  # It may take much longer time for the detector to process the very first frame
+  # To avoid possible issues caused by the delay, we can skip the first few frames
+  number_frames_skipped = 5
 
   tracker = segtracker.MaskRCNNTracker(class_names)
 
@@ -313,6 +316,11 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
+
+    if number_frames_skipped > 0:
+      number_frames_skipped -= 1
+      continue
+
     tracking_predictions = tracker.receive_segmentation_output(r, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
@@ -333,6 +341,9 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
 def detect_and_send_frames(cap, model, socket):
   # A counter for frames that have been written to the output file so far
   n_frames = 0
+  # It may take much longer time for the detector to process the very first frame
+  # To avoid possible issues caused by the delay, we can skip the first few frames
+  number_frames_skipped = 5
 
   tracker = segtracker.MaskRCNNTracker(class_names)
 
@@ -351,6 +362,11 @@ def detect_and_send_frames(cap, model, socket):
     finish_time = time.time()
     print("Elapsed time per frame = %f"%(finish_time - start_time))
     r = results[0]
+
+    if number_frames_skipped > 0:
+      number_frames_skipped -= 1
+      continue
+
     tracking_predictions = tracker.receive_segmentation_output(r, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions)
