@@ -40,6 +40,9 @@ class MaskRCNNTracker():
     self.N_divide_width = 8  # the number of grids along x
     self.N_divide_height = 4 # the number of grids along y
     self.left_top_right_bottom = None # A rectangle for inner frame 
+    # once the number of consecutive inactivity frames exceeds the period,
+    # reset the tracker
+    self.max_inactivity_period = 50 # in frames
     self.reset()
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
@@ -116,6 +119,7 @@ class MaskRCNNTracker():
     """
     Reset the tracker: flush all buffers and reset all internal dynamic state variables 
     """
+    self.inactivity_counter = 0 # the number of consectutive frames where no instances detected 
     self.instance_id_manager = 0
     self.dict_instance_history = {}
     self.dict_trajectories = {}
@@ -186,6 +190,7 @@ class MaskRCNNTracker():
     # Number of instances
     N = boxes.shape[0]
     if not N:
+        self.inactivity_counter += 1
         return None
     else:
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
@@ -199,6 +204,11 @@ class MaskRCNNTracker():
       class_id = class_ids[i]
       if class_id == self.class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
+
+    if len(instances_of_interest) == 0:
+      self.inactivity_counter += 1
+    else:
+      self.inactivity_counter = 0
 
     # calculate the histograms of color (hue) for each segmented instances
     dict_histograms_hue = self.calculate_hue_histograms(instances_of_interest, masks, image)
@@ -271,6 +281,7 @@ class MaskRCNNTracker():
     # Number of instances
     N = boxes.shape[0]
     if not N:
+        self.inactivity_counter += 1
         return None
     else:
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
@@ -287,6 +298,13 @@ class MaskRCNNTracker():
       class_id = class_ids[i]
       if class_id == self.class_names.index('person') and scores[i] >= 0.75:
         instances_of_interest.append(i)
+
+    if len(instances_of_interest) == 0:
+      self.inactivity_counter += 1
+      if self.inactivity_counter >= self.max_inactivity_period:
+        self.reset()
+    else:
+      self.inactivity_counter = 0
 
     # calculate the histograms of color (hue) for each segmented instances
     dict_histograms_hue = self.calculate_hue_histograms(instances_of_interest, masks, image)
