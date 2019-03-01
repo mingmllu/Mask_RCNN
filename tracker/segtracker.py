@@ -173,10 +173,17 @@ class MaskRCNNTracker():
     for uid in uid_list:
       if not uid in self.dict_trajectories:
         self.dict_instances_out_of_track[uid]['hist_hue'] = self.get_average_histogram_hue(uid)
+        self.dict_instances_out_of_track[uid]['frame_number'] = self.frame_number
         self.dict_hue_histogram.pop(uid)
     for uid in self.dict_hue_histogram:
       if len(self.dict_hue_histogram[uid]) > 4:
         self.dict_hue_histogram[uid].pop(0) # only keep the most recent histograms
+
+    # Delete the instances that have been out of the scene for a long time
+    uid_list = list(self.dict_instances_out_of_track.keys())
+    for uid in uid_list:
+      if self.frame_number - self.dict_instances_out_of_track[uid]['frame_number'] > 120:
+        self.dict_instances_out_of_track.pop(uid)
 
 
   def receive_first_segmentation_output(self, results, image):
