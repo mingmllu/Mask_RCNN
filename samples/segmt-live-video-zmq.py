@@ -133,7 +133,7 @@ from tracker import segtracker
 def generate_masked_image(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
-                      show_mask=True, show_bbox=True,
+                      show_mask=True, show_bbox=True, show_id=True,
                       colors=None, captions=None, tracking=None):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
@@ -143,6 +143,7 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
     scores: (optional) confidence scores for each box
     title: (optional) Figure title
     show_mask, show_bbox: To show masks and bounding boxes or not
+    show_id: if True, show a unique ID number associated with each instance
     figsize: (optional) the size of the image
     colors: (optional) An array or colors to use with each object
     captions: (optional) A list of strings to use as captions for each object
@@ -232,14 +233,19 @@ def generate_masked_image(image, boxes, masks, class_ids, class_names,
       for c in contours:
         # switch x with y otherwise the contours will be rotated by 90 degrees
         pts3d.append(c.astype(np.int32).reshape((-1, 1, 2))[:,:,[1,0]])
-      cv2.polylines(masked_image_uint8, pts3d, True, (0, 255, 255))
-      uid = dict_inst_index_to_uid[i]
-      center = dict_box_center[i]
-      font = cv2.FONT_HERSHEY_SIMPLEX
-      fontScale = 0.5
-      fontColor = (0,255,255)
-      lineType = 1
-      cv2.putText(masked_image_uint8, str(uid), center, font, fontScale, fontColor, lineType)
+      color = (0, 255, 255)
+      if i in dict_colors:
+        color = dict_colors[i]
+        color = (int(color[0]*255), int(color[1]*255), int(color[2]*255))
+      cv2.polylines(masked_image_uint8, pts3d, True, color)
+      if show_id:
+        uid = dict_inst_index_to_uid[i]
+        center = dict_box_center[i]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        fontScale = 0.5
+        fontColor = (0,255,255)
+        lineType = 1
+        cv2.putText(masked_image_uint8, str(uid), center, font, fontScale, fontColor, lineType)
     return masked_image_uint8
 
 import cv2
@@ -294,6 +300,9 @@ if os.getenv('SOURCE_IMAGE_RESIZE_FACTOR'):
 SHOW_SEGMENTATION_MASK = os.getenv('SHOW_SEGMENTATION_MASK', True)
 if SHOW_SEGMENTATION_MASK != True:
   SHOW_SEGMENTATION_MASK = True if SHOW_SEGMENTATION_MASK is not '0' else False
+SHOW_INSTANCE_ID = os.getenv('SHOW_INSTANCE_ID', True)
+if SHOW_INSTANCE_ID != True:
+  SHOW_INSTANCE_ID = True if SHOW_INSTANCE_ID is not '0' else False
 
 def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
@@ -327,7 +336,7 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
     tracking_predictions = tracker.receive_segmentation_output(r, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
                    class_names, r['scores'], colors=colors, tracking=tracking_predictions,
-                   show_mask = SHOW_SEGMENTATION_MASK)
+                   show_mask = SHOW_SEGMENTATION_MASK, show_id=SHOW_INSTANCE_ID)
     print("Rendering %f"%(time.time() - finish_time))
  
     # Write the frame into the file 'output.avi'
