@@ -43,6 +43,9 @@ class MaskRCNNTracker():
     # once the number of consecutive inactivity frames exceeds the period,
     # reset the tracker
     self.max_inactivity_period = 50 # in frames
+    self.frame_stale_timer = 20 # do not keep info about a frame that is too old
+    # the maximum Euclidean histogram distance for two similar histograms
+    self.hist_dissimilarity_thresh = 0.2
     self.reset()
 
   def fill_polygons_in_bounding_map(self, poly_vertices):
@@ -130,6 +133,10 @@ class MaskRCNNTracker():
     # For example, "occlusion" 
     self.dict_instance_states = {}
     self.dict_hue_histogram = {} # keys: ID assigned to instance under track
+    # If an instance is deemed to be out of track, its relevant information like color
+    # histogram will be stored in the dictionary. It may be re-claimed later based on
+    # color matching.
+    self.dict_instances_out_of_track = {} # keys: instance unique ID
 
   def update_buffers(self):
     # Update the buffers (dictionaries) for the past detection results
@@ -138,7 +145,7 @@ class MaskRCNNTracker():
       if len(self.dict_instance_history[uid]) > self.instance_memory_length:
         self.dict_instance_history[uid].pop(0) # discard the oldest one
       while (len(self.dict_instance_history[uid]) > 0):
-        if (self.frame_number - self.dict_instance_history[uid][0][6]) > 20: # discard stale frames
+        if (self.frame_number - self.dict_instance_history[uid][0][6]) > self.frame_stale_timer:
           self.dict_instance_history[uid].pop(0)
         else:
           break
@@ -146,6 +153,7 @@ class MaskRCNNTracker():
     for uid in uid_list:
       if len(self.dict_instance_history[uid]) == 0:
         self.dict_instance_history.pop(uid)
+        self.dict_instances_out_of_track[uid] = {}  # keep it in case it will be re-claimed
         if uid in self.dict_trajectories:
           #self.save_trajectory_to_textfile(uid, "location")
           self.dict_trajectories.pop(uid)
@@ -164,9 +172,10 @@ class MaskRCNNTracker():
     uid_list = list(self.dict_hue_histogram.keys())
     for uid in uid_list:
       if not uid in self.dict_trajectories:
+        self.dict_instances_out_of_track[uid]['hist_hue'] = self.get_average_histogram_hue(uid)
         self.dict_hue_histogram.pop(uid)
     for uid in self.dict_hue_histogram:
-      if len(self.dict_hue_histogram[uid]) > 2:
+      if len(self.dict_hue_histogram[uid]) > 4:
         self.dict_hue_histogram[uid].pop(0) # only keep the most recent histograms
 
 
@@ -358,7 +367,7 @@ class MaskRCNNTracker():
         if not self.is_occluded_next_frame(uid):
           hue_dissimilarity = self.calculate_distance_between_histograms(dict_histograms_hue[i], 
                                    self.dict_hue_histogram[uid][-1])
-          if hue_dissimilarity < 0.20:
+          if hue_dissimilarity < self.hist_dissimilarity_thresh:
             uid_set.remove(uid)  # this unique ID is claimed and won't be taken by other instances
             dict_inst_index_to_uid[i] = uid
             self.dict_instance_history[uid].append(dict_polygons_in_bounding_map[i]) # store the current frame
@@ -381,6 +390,21 @@ class MaskRCNNTracker():
           dict_polygons_in_bounding_map.pop(i)
           dict_contours.pop(i)
           instances_of_interest.remove(i)
+    # Reclaim the instances out of track if possible
+    for i in dict_polygons_in_bounding_map:
+      if i not in dict_inst_index_to_uid: # make sure it's not associated with any instance on track
+        min_hue_dissimilarity = 1.0
+        uid_min_hue_dissimilarity = 0
+        for uid in self.dict_instances_out_of_track:
+          histogram_color = self.dict_instances_out_of_track[uid]['hist_hue']
+          hue_dissimilarity = self.calculate_distance_between_histograms(histogram_color, dict_histograms_hue[i])
+          if hue_dissimilarity < min_hue_dissimilarity:
+            min_hue_dissimilarity = hue_dissimilarity
+            uid_min_hue_dissimilarity = uid
+        if min_hue_dissimilarity < self.hist_dissimilarity_thresh:
+          self.dict_instance_history[uid_min_hue_dissimilarity] = [dict_polygons_in_bounding_map[i]]
+          dict_inst_index_to_uid[i] = uid_min_hue_dissimilarity
+          self.dict_instances_out_of_track.pop(uid_min_hue_dissimilarity)
     # Now assign unique IDs to new instances
     for i in dict_polygons_in_bounding_map:
       if i not in dict_inst_index_to_uid: # this would be a new instance
@@ -662,3 +686,14 @@ class MaskRCNNTracker():
     """
     assert hist1.shape == hist2.shape
     return np.linalg.norm(hist1 - hist2)
+
+  def get_average_histogram_hue(self, uid):
+    """
+    Calcualte and return an instance's average histogram of hue
+    """
+    if uid not in self.dict_hue_histogram:
+      return None
+    avg_hist = np.zeros(self.dict_hue_histogram[uid][0].shape)
+    for hist in self.dict_hue_histogram[uid]:
+      avg_hist = avg_hist + hist
+    return avg_hist / np.sum(avg_hist)  # normalized such that the sum is 1
