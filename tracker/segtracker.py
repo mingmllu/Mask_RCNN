@@ -36,10 +36,14 @@ class MaskRCNNTracker():
     self.instance_memory_length = 2
     self.image_size = None # the image size (x, y) of the current frame
     self.occlusion_factor_thresh = 0.4 # parameter
-    # the inner area conssist of the inner grids not touching any sides
+    # the inner area consists of the inner grids not touching any sides
     self.N_divide_width = 8  # the number of grids along x
     self.N_divide_height = 4 # the number of grids along y
     self.left_top_right_bottom = None # A rectangle for inner frame 
+    # If this flag set True, do not do inner area check:
+    # without inner area check ===> more false positives
+    # with inner area check ===> reduction in false positives, more false negatives
+    self.disable_inner_area_check = False
     # once the number of consecutive inactivity frames exceeds the period,
     # reset the tracker
     self.max_inactivity_period = 50 # in frames
@@ -662,6 +666,8 @@ class MaskRCNNTracker():
     - leftside, rightside, topside, bottomside: if False, objects never get into or out of the frame 
     the frame across the side
     """
+    if self.disable_inner_area_check:
+      return False
     if leftside and x < self.left_top_right_bottom[0]:
       return False
     if rightside and x > self.left_top_right_bottom[2]:

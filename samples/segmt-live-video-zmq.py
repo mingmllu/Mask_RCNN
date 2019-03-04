@@ -303,6 +303,9 @@ if SHOW_SEGMENTATION_MASK != False:
 SHOW_INSTANCE_ID = os.getenv('SHOW_INSTANCE_ID', True)
 if SHOW_INSTANCE_ID != True:
   SHOW_INSTANCE_ID = True if SHOW_INSTANCE_ID is not '0' else False
+DISABLE_INNER_AREA_CHECK = os.getenv('DISABLE_INNER_AREA_CHECK', False)
+if DISABLE_INNER_AREA_CHECK != False:
+  DISABLE_INNER_AREA_CHECK = True if DISABLE_INNER_AREA_CHECK is not '0' else False
 
 def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   # A counter for frames that have been written to the output file so far
@@ -312,6 +315,7 @@ def detect_and_save_frames(cap, model, max_frames_to_be_saved, video_sink):
   number_frames_skipped = 5
 
   tracker = segtracker.MaskRCNNTracker(class_names)
+  tracker.disable_inner_area_check = DISABLE_INNER_AREA_CHECK
 
   while(True):
     ret, frame = cap.read()
@@ -359,6 +363,7 @@ def detect_and_send_frames(cap, model, socket):
   number_frames_skipped = 5
 
   tracker = segtracker.MaskRCNNTracker(class_names)
+  tracker.disable_inner_area_check = DISABLE_INNER_AREA_CHECK
 
   while(True):
     ret, frame = cap.read()
