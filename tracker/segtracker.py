@@ -185,6 +185,14 @@ class MaskRCNNTracker():
       if self.frame_number - self.dict_instances_out_of_track[uid]['frame_number'] > 120:
         self.dict_instances_out_of_track.pop(uid)
 
+  def assign_unique_instance_id(self):
+    """
+    Allocate a unique ID to an instance.
+    Return the ID number
+    """
+    self.instance_id_manager += 1
+    uid = self.instance_id_manager
+    return uid
 
   def receive_first_segmentation_output(self, results, image):
     """
@@ -253,8 +261,7 @@ class MaskRCNNTracker():
     dict_inst_index_to_uid = {} # mapping current frame's instance index to unique ID
     assert self.instance_id_manager == 0
     for i in dict_polygons_in_bounding_map:
-      self.instance_id_manager += 1
-      uid = self.instance_id_manager
+      uid = self.assign_unique_instance_id()
       dict_inst_index_to_uid[i] = uid
       self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
       y1, x1, y2, x2 = boxes[i]
@@ -415,8 +422,7 @@ class MaskRCNNTracker():
     # Now assign unique IDs to new instances
     for i in dict_polygons_in_bounding_map:
       if i not in dict_inst_index_to_uid: # this would be a new instance
-        self.instance_id_manager += 1
-        uid = self.instance_id_manager
+        uid = self.assign_unique_instance_id()
         self.dict_instance_history[uid] = [dict_polygons_in_bounding_map[i]]
         dict_inst_index_to_uid[i] = uid
     # calculate the center of the box that encloses a instance's contour
