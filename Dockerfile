@@ -37,7 +37,7 @@ RUN mkdir videos
 RUN pip install zmq requests Pillow Cython numpy
 RUN pip install keras opencv-python h5py imgaug ipython
 RUN pip install pycocotools scikit-image scikit-learn matplotlib 
-RUN pip install --upgrade tensorflow-gpu
+RUN pip install --upgrade tensorflow-gpu==1.12.0
 
 WORKDIR /mask_rcnn/samples
 
