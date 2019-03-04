@@ -382,7 +382,8 @@ def detect_and_send_frames(cap, model, socket):
 
     tracking_predictions = tracker.receive_segmentation_output(r, frame)
     masked_frame = generate_masked_image(frame, r['rois'], r['masks'], r['class_ids'], 
-                   class_names, r['scores'], colors=colors, tracking=tracking_predictions)
+                   class_names, r['scores'], colors=colors, tracking=tracking_predictions,
+                   show_mask = SHOW_SEGMENTATION_MASK, show_id=SHOW_INSTANCE_ID)
     print("Rendering %f"%(time.time() - finish_time))
     n_frames += 1
     print("Frame %d" % (n_frames))
