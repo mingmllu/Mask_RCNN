@@ -137,6 +137,7 @@ class MaskRCNNTracker():
     # histogram will be stored in the dictionary. It may be re-claimed later based on
     # color matching.
     self.dict_instances_out_of_track = {} # keys: instance unique ID
+    self.list_recycled_instance_id = []
 
   def update_buffers(self):
     # Update the buffers (dictionaries) for the past detection results
@@ -184,14 +185,19 @@ class MaskRCNNTracker():
     for uid in uid_list:
       if self.frame_number - self.dict_instances_out_of_track[uid]['frame_number'] > 120:
         self.dict_instances_out_of_track.pop(uid)
+        self.list_recycled_instance_id.append(uid)
 
   def assign_unique_instance_id(self):
     """
     Allocate a unique ID to an instance.
     Return the ID number
     """
-    self.instance_id_manager += 1
-    uid = self.instance_id_manager
+    if len(self.list_recycled_instance_id) > 0:
+      uid = self.list_recycled_instance_id[0]
+      self.list_recycled_instance_id.pop(0)
+    else:
+      self.instance_id_manager += 1
+      uid = self.instance_id_manager
     return uid
 
   def receive_first_segmentation_output(self, results, image):
