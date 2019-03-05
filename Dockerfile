@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y libsm6 libxext6 libxrender-dev
 #set the working directory
 WORKDIR /mask_rcnn
 
-ADD mask_rcnn_coco.h5 .
+#ADD mask_rcnn_coco.h5 .
 ADD mrcnn/ ./mrcnn
 ADD samples/ ./samples
 ADD tracker/ ./tracker
