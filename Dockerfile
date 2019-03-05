@@ -2,9 +2,9 @@
 FROM ubuntu:16.04
 
 # FROM defines the base image
-FROM nvidia/cuda:9.0-base
-FROM nvidia/cuda:9.0-cudnn7-runtime
-FROM nvidia/cuda:9.0-cudnn7-devel
+FROM nvidia/cuda:10.0-base
+FROM nvidia/cuda:10.0-cudnn7-runtime
+FROM nvidia/cuda:10.0-cudnn7-devel
 
 RUN apt-get update && \
     apt-get install -y software-properties-common
@@ -37,8 +37,7 @@ RUN mkdir videos
 RUN pip install zmq requests Pillow Cython numpy
 RUN pip install keras opencv-python h5py imgaug ipython
 RUN pip install pycocotools scikit-image scikit-learn matplotlib 
-RUN pip install --upgrade tensorflow-gpu==1.12.0
-
+RUN pip install --upgrade tensorflow-gpu==tf-nightly-gpu
 WORKDIR /mask_rcnn/samples
 
 CMD ["python3.5", "segmt-live-video-zmq.py"]
