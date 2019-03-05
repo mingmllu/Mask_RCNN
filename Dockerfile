@@ -8,11 +8,11 @@ FROM nvidia/cuda:10.0-cudnn7-devel
 
 RUN apt-get update && \
     apt-get install -y software-properties-common
-RUN add-apt-repository ppa:jonathonf/python-3.5 && \
+RUN add-apt-repository ppa:jonathonf/python-3.6 && \
     apt-get update -y
 
 RUN apt-get update && apt-get install -y \
-    --no-install-recommends python3.5 python3.5-dev \
+    --no-install-recommends python3.6 python3.6-dev \
     python3-pip && \
     pip3 install --no-cache-dir --upgrade pip setuptools && \
     echo "alias python='python3'" >> /root/.bash_aliases && \
@@ -40,4 +40,4 @@ RUN pip install pycocotools scikit-image scikit-learn matplotlib
 RUN pip install --upgrade tensorflow-gpu==tf-nightly-gpu
 WORKDIR /mask_rcnn/samples
 
-CMD ["python3.5", "segmt-live-video-zmq.py"]
+# CMD ["python3.5", "segmt-live-video-zmq.py"]
