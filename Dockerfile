@@ -2,17 +2,17 @@
 FROM ubuntu:16.04
 
 # FROM defines the base image
-FROM nvidia/cuda:9.0-base
-FROM nvidia/cuda:9.0-cudnn7-runtime
-FROM nvidia/cuda:9.0-cudnn7-devel
+FROM nvidia/cuda:10.0-base
+FROM nvidia/cuda:10.0-cudnn7-runtime
+FROM nvidia/cuda:10.0-cudnn7-devel
 
 RUN apt-get update && \
     apt-get install -y software-properties-common
-RUN add-apt-repository ppa:jonathonf/python-3.5 && \
+RUN add-apt-repository ppa:jonathonf/python-3.6 && \
     apt-get update -y
 
 RUN apt-get update && apt-get install -y \
-    --no-install-recommends python3.5 python3.5-dev \
+    --no-install-recommends python3.6 python3.6-dev \
     python3-pip && \
     pip3 install --no-cache-dir --upgrade pip setuptools && \
     echo "alias python='python3'" >> /root/.bash_aliases && \
@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y libsm6 libxext6 libxrender-dev
 #set the working directory
 WORKDIR /mask_rcnn
 
-ADD mask_rcnn_coco.h5 .
+#ADD mask_rcnn_coco.h5 .
 ADD mrcnn/ ./mrcnn
 ADD samples/ ./samples
 ADD tracker/ ./tracker
@@ -37,8 +37,7 @@ RUN mkdir videos
 RUN pip install zmq requests Pillow Cython numpy
 RUN pip install keras opencv-python h5py imgaug ipython
 RUN pip install pycocotools scikit-image scikit-learn matplotlib 
-RUN pip install --upgrade tensorflow-gpu==1.12.0
-
+RUN pip install tf-nightly-gpu
 WORKDIR /mask_rcnn/samples
 
-CMD ["python3.5", "segmt-live-video-zmq.py"]
+# CMD ["python3.5", "segmt-live-video-zmq.py"]
