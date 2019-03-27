@@ -1,0 +1,9 @@
+= Installation
+* Requirements: GPU needed.
+* Create a virtual environment: ```$ conda create --name conda_tf1d10_gpu_py36 python=3.6```
+* Activate the virtual environment: ```$ conda activate ```
+* Install dependencies: ```$ pip install -r requirements.txt```. Note that TensorFlow-GPU 1.10.0 is used to avoid bugs with both TF 1.11.0 and TF1.12.0.
+* In a separate directory, run ``` $ git clone https://github.com/waleedka/coco.git```
+* Change to the directory "coco/PythonAPI/", run ```python setup.py build_ext install```
+* Now you change back to the directory "Mask_RCNN" and run the sample scripts like "inspect_data.ipynb", "inspect_model.ipynb", and "inspect_weights.ipynb".
+
